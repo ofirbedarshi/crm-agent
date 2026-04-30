@@ -1,0 +1,22 @@
+{
+  "name": "crm-agent-parser",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "eval:parser": "tsx src/parser/evalParser.ts",
+    "eval:llm": "tsx src/eval/runEvaluation.ts",
+    "demo": "tsx src/cli/demo.ts"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}
