@@ -107,14 +107,20 @@ function normalizeAction(action: unknown): { action: SupportedAction | null; cla
   if (type === "create_or_update_client") {
     const normalized = normalizeClientAction(data);
     if (!normalized) {
-      return { action: null, clarification: "מה שם הלקוח כדי שאוכל ליצור או לעדכן אותו?" };
+      return {
+        action: null,
+        clarification: "מה השם המלא של הלקוח כדי שאוכל ליצור או לעדכן את כרטיס הלקוח?"
+      };
     }
     return { action: normalized };
   }
 
   const normalized = normalizeTaskAction(data);
   if (!normalized) {
-    return { action: null, clarification: "מה כותרת המשימה המדויקת שתרצה שאיצור?" };
+    return {
+      action: null,
+      clarification: "מה בדיוק צריך לבצע כדי שאוכל ליצור את המשימה שביקשת?"
+    };
   }
   return { action: normalized };
 }
@@ -146,7 +152,7 @@ function normalizeParseResult(raw: unknown): ParseMessageResult {
   );
 
   if (actions.length === 0 && finalClarificationQuestions.length === 0) {
-    finalClarificationQuestions.push("איזו פעולה תרצה שאבצע מהעדכון הזה?");
+    finalClarificationQuestions.push("מה חסר בהודעה כדי שאוכל לבצע את הפעולה שביקשת?");
   }
 
   return {

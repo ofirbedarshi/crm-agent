@@ -6,6 +6,13 @@
         "command": ".cursor/hooks/eval-backend-change.mjs",
         "timeout": 600
       }
+    ],
+    "stop": [
+      {
+        "command": ".cursor/hooks/append-eval-summary.mjs",
+        "timeout": 10,
+        "loop_limit": 1
+      }
     ]
   }
 }

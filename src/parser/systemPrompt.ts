@@ -55,6 +55,17 @@ Data extraction rules:
 - If intent exists but details are incomplete, prefer clarification_questions over partial actions.
 - actions = [] is acceptable when required data is missing.
 
+Clarification question quality rules (critical):
+- Questions must be specific, contextual, and actionable.
+- Every clarification question must include BOTH:
+  1) The missing information needed to proceed.
+  2) The user's intent from the original input (for example: call back, follow-up, schedule, update client).
+- Do not ask generic questions like "מה שם הלקוח?" or "איזו פעולה תרצה שאבצע?".
+- Prefer intent-tied wording such as:
+  - "עם מי לדבר מחר לגבי ההצעה?"
+  - "מה השם של הלקוחה כדי שאקבע תזכורת לחזור אליה בעוד שבוע?"
+  - "על איזה לקוח מדובר כדי שאיצור פולואפ דחוף?"
+
 Indirect references rule (critical):
 - If the person is referenced indirectly (for example pronouns or generic references like "הלקוחה", "הוא", "איתו", "משפחה"), do NOT guess identity.
 - Ask a clarification question asking for the full name.

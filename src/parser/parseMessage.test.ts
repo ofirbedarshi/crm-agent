@@ -172,6 +172,23 @@ describe("parseMessage", () => {
     const result = await parseMessage("דיברתי עם לקוח חדש");
     expect(result.actions.find((action) => action.type === "create_or_update_client")).toBeUndefined();
     expect(result.clarification_questions.length).toBeGreaterThan(0);
+    expect(result.clarification_questions[0]).toContain("כדי שאוכל ליצור או לעדכן");
+    expect(result.clarification_questions[0]).not.toBe("מה שם הלקוח?");
+  });
+
+  it("adds contextual fallback clarification when no actions or questions are returned", async () => {
+    mockOpenAiJsonContent({
+      actions: [],
+      missing_info: [],
+      clarification_questions: []
+    });
+
+    const result = await parseMessage("דבר איתו מחר");
+    expect(result.actions).toEqual([]);
+    expect(result.clarification_questions).toEqual([
+      "מה חסר בהודעה כדי שאוכל לבצע את הפעולה שביקשת?"
+    ]);
+    expect(result.clarification_questions[0]).not.toBe("איזו פעולה תרצה שאבצע מהעדכון הזה?");
   });
 
 });

@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 const repoRoot = process.cwd();
 const hookStateDir = path.join(repoRoot, ".cursor", "hooks", ".state");
 const stateFile = path.join(hookStateDir, "eval-baseline.json");
+const latestSummaryFile = path.join(hookStateDir, "latest-eval-summary.json");
 const evalResultsDir = path.join(repoRoot, "src", "eval", "results");
 const NOISE_THRESHOLD = 0.25;
 const WARNING_THRESHOLD = 0.75;
@@ -68,7 +69,33 @@ function printSummary(message) {
   process.stderr.write(`\n[crm-eval-hook] ${message}\n`);
 }
 
+function withLatency(message, durationMs) {
+  return `${message} [latency: ${durationMs}ms]`;
+}
+
+function persistLatestSummary(message, severity = "info", durationMs = 0, extra = {}) {
+  const messageWithLatency = withLatency(message, durationMs);
+  mkdirSync(hookStateDir, { recursive: true });
+  writeFileSync(
+    latestSummaryFile,
+    JSON.stringify(
+      {
+        message: messageWithLatency,
+        severity,
+        duration_ms: durationMs,
+        created_at: new Date().toISOString(),
+        ...extra
+      },
+      null,
+      2
+    ),
+    "utf8"
+  );
+}
+
 function main() {
+  const startedAt = process.hrtime.bigint();
+  const elapsedMs = () => Math.round(Number(process.hrtime.bigint() - startedAt) / 1e6);
   const inputRaw = readFileSync(0, "utf8");
   let payload = {};
   try {
@@ -78,7 +105,9 @@ function main() {
   }
 
   if (!shouldRunFromHookInput(payload)) {
-    printSummary("Skipped: edit does not look like backend logic affecting parser flow.");
+    const msg = "Skipped: edit does not look like backend logic affecting parser flow.";
+    printSummary(msg);
+    persistLatestSummary(msg, "skip", elapsedMs());
     return;
   }
 
@@ -91,20 +120,26 @@ function main() {
   });
 
   if (cmd.status !== 0) {
-    printSummary("Evaluation failed to run. Please run `npm run eval:llm` manually.");
+    const msg = "Evaluation failed to run. Please run `npm run eval:llm` manually.";
+    printSummary(msg);
+    persistLatestSummary(msg, "error", elapsedMs());
     if (cmd.stderr) process.stderr.write(cmd.stderr);
     return;
   }
 
   const latestReport = getLatestEvalJsonFile();
   if (!latestReport) {
-    printSummary("No evaluation report found after run.");
+    const msg = "No evaluation report found after run.";
+    printSummary(msg);
+    persistLatestSummary(msg, "error", elapsedMs());
     return;
   }
 
   const report = readJsonIfExists(latestReport);
   if (!report || typeof report.average_score !== "number") {
-    printSummary("Could not parse evaluation average score from latest report.");
+    const msg = "Could not parse evaluation average score from latest report.";
+    printSummary(msg);
+    persistLatestSummary(msg, "error", elapsedMs());
     return;
   }
 
@@ -130,9 +165,13 @@ function main() {
   );
 
   if (previous === null) {
-    printSummary(
-      `Evaluation complete. Average score: ${current.toFixed(2)} (baseline established).`
-    );
+    const msg = `Evaluation complete. Average score: ${current.toFixed(2)} (baseline established).`;
+    printSummary(msg);
+    persistLatestSummary(msg, "info", elapsedMs(), {
+      average_score: current,
+      previous_average_score: null,
+      report_file: latestReport
+    });
     return;
   }
 
@@ -141,39 +180,64 @@ function main() {
 
   if (absDelta < NOISE_THRESHOLD) {
     const direction = delta > 0 ? "up" : delta < 0 ? "down" : "flat";
-    printSummary(
+    const msg =
       `Score change is within noise band (${direction} ${absDelta.toFixed(2)}). ` +
-        `No action needed. (${previous.toFixed(2)} -> ${current.toFixed(2)})`
-    );
+      `No action needed. (${previous.toFixed(2)} -> ${current.toFixed(2)})`;
+    printSummary(msg);
+    persistLatestSummary(msg, "info", elapsedMs(), {
+      average_score: current,
+      previous_average_score: previous,
+      report_file: latestReport
+    });
     return;
   }
 
   if (delta < 0 && absDelta < WARNING_THRESHOLD) {
-    printSummary(
+    const msg =
       `Score warning: regressed by ${absDelta.toFixed(2)} (${previous.toFixed(2)} -> ${current.toFixed(
         2
-      )}). Consider rerunning to confirm before action.`
-    );
+      )}). Consider rerunning to confirm before action.`;
+    printSummary(msg);
+    persistLatestSummary(msg, "warning", elapsedMs(), {
+      average_score: current,
+      previous_average_score: previous,
+      report_file: latestReport
+    });
     return;
   }
 
   if (delta <= -WARNING_THRESHOLD) {
-    printSummary(
+    const msg =
       `Score CRITICAL regression: ${absDelta.toFixed(2)} (${previous.toFixed(2)} -> ${current.toFixed(
         2
-      )}). Investigate before proceeding.`
-    );
+      )}). Investigate before proceeding.`;
+    printSummary(msg);
+    persistLatestSummary(msg, "critical", elapsedMs(), {
+      average_score: current,
+      previous_average_score: previous,
+      report_file: latestReport
+    });
     return;
   }
 
   if (delta > 0) {
-    printSummary(
-      `Score improved by ${delta.toFixed(2)} (${previous.toFixed(2)} -> ${current.toFixed(2)}).`
-    );
+    const msg = `Score improved by ${delta.toFixed(2)} (${previous.toFixed(2)} -> ${current.toFixed(2)}).`;
+    printSummary(msg);
+    persistLatestSummary(msg, "info", elapsedMs(), {
+      average_score: current,
+      previous_average_score: previous,
+      report_file: latestReport
+    });
     return;
   }
 
-  printSummary(`Score unchanged at ${current.toFixed(2)}.`);
+  const msg = `Score unchanged at ${current.toFixed(2)}.`;
+  printSummary(msg);
+  persistLatestSummary(msg, "info", elapsedMs(), {
+    average_score: current,
+    previous_average_score: previous,
+    report_file: latestReport
+  });
 }
 
 main();

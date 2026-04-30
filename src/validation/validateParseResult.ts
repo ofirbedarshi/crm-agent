@@ -103,7 +103,7 @@ export function validateParseResult(result: ParseMessageResult): ValidationResul
       const normalized = normalizeClientAction(action);
       if (!normalized) {
         missingInfo.add("client_name");
-        clarifications.add("מה השם המלא של הלקוח?");
+        clarifications.add("מה השם המלא של הלקוח כדי שאוכל ליצור או לעדכן את כרטיס הלקוח?");
       } else {
         validActions.push(normalized);
       }
@@ -114,7 +114,7 @@ export function validateParseResult(result: ParseMessageResult): ValidationResul
       const normalized = normalizeTaskAction(action);
       if (!normalized) {
         missingInfo.add("task_title");
-        clarifications.add("מה כותרת המשימה שתרצה שאיצור?");
+        clarifications.add("מה בדיוק צריך לבצע כדי שאוכל ליצור את המשימה שביקשת?");
       } else {
         validActions.push(normalized);
       }
