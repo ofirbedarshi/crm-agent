@@ -34,13 +34,14 @@ describe("runCrmAgent", () => {
       clarification_questions: []
     });
 
-    const result = await runCrmAgent("input");
+    const result = await runCrmAgent({ rawMessage: "input", pipelineInput: "input", historyCount: 0 });
     const state = getFakeCrmState();
 
     expect(result.validActions).toHaveLength(1);
     expect(state.clients).toHaveLength(1);
     expect(state.clients[0]?.name).toBe("רוני אביטל");
     expect(result.response).toContain("לקוחות");
+    expect(result.trace.validation?.validActions).toHaveLength(1);
   });
 
   it("buyer lead plus task executes both actions", async () => {
@@ -66,7 +67,7 @@ describe("runCrmAgent", () => {
       clarification_questions: []
     });
 
-    const result = await runCrmAgent("input");
+    const result = await runCrmAgent({ rawMessage: "input", pipelineInput: "input", historyCount: 0 });
     const state = getFakeCrmState();
 
     expect(result.validActions).toHaveLength(2);
@@ -74,6 +75,7 @@ describe("runCrmAgent", () => {
     expect(state.tasks).toHaveLength(1);
     expect(result.response).toContain("לקוחות");
     expect(result.response).toContain("משימות");
+    expect(result.trace.crm?.executionResults).toHaveLength(2);
   });
 
   it("missing client name returns clarification and executes nothing", async () => {
@@ -90,13 +92,14 @@ describe("runCrmAgent", () => {
       clarification_questions: []
     });
 
-    const result = await runCrmAgent("input");
+    const result = await runCrmAgent({ rawMessage: "input", pipelineInput: "input", historyCount: 0 });
     const state = getFakeCrmState();
 
     expect(result.validActions).toHaveLength(0);
     expect(state.clients).toHaveLength(0);
     expect(state.tasks).toHaveLength(0);
     expect(result.response).toContain("מה השם המלא של הלקוח");
+    expect(result.trace.response?.replyType).toBe("clarification");
   });
 
   it("ambiguous task does not invent client_name", async () => {
@@ -113,7 +116,7 @@ describe("runCrmAgent", () => {
       clarification_questions: []
     });
 
-    await runCrmAgent("input");
+    await runCrmAgent({ rawMessage: "input", pipelineInput: "input", historyCount: 0 });
     const state = getFakeCrmState();
 
     expect(state.tasks).toHaveLength(1);
@@ -136,7 +139,7 @@ describe("runCrmAgent", () => {
       clarification_questions: []
     });
 
-    const result = await runCrmAgent("input");
+    const result = await runCrmAgent({ rawMessage: "input", pipelineInput: "input", historyCount: 0 });
 
     expect(result.validActions).toEqual([
       {
@@ -146,5 +149,6 @@ describe("runCrmAgent", () => {
         }
       }
     ]);
+    expect(result.trace.validation?.rejectedActions).toEqual([]);
   });
 });

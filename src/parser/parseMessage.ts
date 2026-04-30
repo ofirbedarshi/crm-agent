@@ -28,12 +28,23 @@ interface ValidationResult {
 
 interface ParseMessageOptions {
   debug?: boolean;
+  traceInput?: {
+    userPrompt?: string;
+  };
 }
 
 interface ParseMessageDebugInfo {
+  llm: {
+    model: string;
+    systemPrompt: string;
+    userPrompt: string;
+    rawResponseText: string;
+    parseStatus: "ok" | "invalid_json";
+  };
   intent: IntentResult;
   entities: ExtractedEntities;
   validation: ValidationResult;
+  decision: ParseMessageResult;
 }
 
 export type ParseMessagePipelineResult = ParseMessageResult & {
@@ -341,6 +352,7 @@ export async function parseMessage(
     throw new Error("OPENAI_API_KEY is not set");
   }
 
+  const userPrompt = options.traceInput?.userPrompt ?? input;
   const response = await fetch(OPENAI_URL, {
     method: "POST",
     headers: {
@@ -353,7 +365,7 @@ export async function parseMessage(
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: PARSER_SYSTEM_PROMPT },
-        { role: "user", content: input }
+        { role: "user", content: userPrompt }
       ]
     })
   });
@@ -372,9 +384,11 @@ export async function parseMessage(
   }
 
   let rawModelJson: unknown;
+  let parseStatus: "ok" | "invalid_json" = "ok";
   try {
     rawModelJson = JSON.parse(content);
   } catch {
+    parseStatus = "invalid_json";
     throw new Error("OpenAI response content is not valid JSON");
   }
 
@@ -399,7 +413,15 @@ export async function parseMessage(
     _debug: {
       intent,
       entities,
-      validation
+      validation,
+      decision: result,
+      llm: {
+        model: DEFAULT_MODEL,
+        systemPrompt: PARSER_SYSTEM_PROMPT,
+        userPrompt,
+        rawResponseText: content,
+        parseStatus
+      }
     }
   };
 }

@@ -2,6 +2,7 @@ import "dotenv/config";
 import cors from "cors";
 import express from "express";
 import { runCrmAgent } from "../src/pipeline/runCrmAgent";
+import type { CrmPipelineTrace } from "../src/pipeline/trace";
 import type { ParseMessageResult, SupportedAction } from "../src/types/parser";
 
 type Message = {
@@ -113,10 +114,43 @@ app.post("/chat", async (req, res) => {
   const normalizedHistory = normalizeHistory(history);
 
   try {
-    const result = await runCrmAgent(buildPipelineInput(normalizedMessage, normalizedHistory));
-    return res.json({ reply: formatResponse(result.parsed) });
-  } catch {
-    return res.status(500).json({ reply: "קרה משהו, ננסה שוב?" });
+    const pipelineInput = buildPipelineInput(normalizedMessage, normalizedHistory);
+    const result = await runCrmAgent({
+      rawMessage: normalizedMessage,
+      pipelineInput,
+      historyCount: normalizedHistory.length
+    });
+    const reply = formatResponse(result.parsed);
+    const trace: CrmPipelineTrace = {
+      ...result.trace,
+      response: result.trace.response
+        ? {
+            ...result.trace.response,
+            formattedReply: reply
+          }
+        : undefined
+    };
+    return res.json({ reply, trace });
+  } catch (error) {
+    const reply = "קרה משהו, ננסה שוב?";
+    const trace: CrmPipelineTrace = {
+      input: {
+        rawMessage: normalizedMessage,
+        pipelineInput: buildPipelineInput(normalizedMessage, normalizedHistory),
+        historyCount: normalizedHistory.length
+      },
+      timing: {},
+      error: {
+        stage: "chat_route",
+        message: error instanceof Error ? error.message : "Unknown error"
+      },
+      response: {
+        generatedResponse: reply,
+        formattedReply: reply,
+        replyType: "fallback"
+      }
+    };
+    return res.status(500).json({ reply, trace });
   }
 });
 

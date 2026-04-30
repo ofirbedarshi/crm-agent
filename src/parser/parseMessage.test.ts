@@ -209,16 +209,28 @@ describe("parseMessage", () => {
     const result = await parseMessage("תזכורת לחזור ללקוח", { debug: true });
 
     expect(result.actions).toHaveLength(1);
-    expect(result._debug).toEqual({
-      intent: { intent: "create_task" },
-      entities: {
-        title: "לחזור ללקוח"
-      },
-      validation: {
-        isValid: true,
-        missingFields: []
-      }
+    expect(result._debug?.intent).toEqual({ intent: "create_task" });
+    expect(result._debug?.entities).toEqual({
+      title: "לחזור ללקוח"
     });
+    expect(result._debug?.validation).toEqual({
+      isValid: true,
+      missingFields: []
+    });
+    expect(result._debug?.decision).toEqual({
+      actions: [
+        {
+          type: "create_task",
+          data: {
+            title: "לחזור ללקוח"
+          }
+        }
+      ],
+      missing_info: [],
+      clarification_questions: []
+    });
+    expect(result._debug?.llm.model).toBe("gpt-4o-mini");
+    expect(result._debug?.llm.parseStatus).toBe("ok");
   });
 
   it("keeps client_name optional for create_task validation", async () => {

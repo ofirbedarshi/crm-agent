@@ -8,6 +8,7 @@ import type {
 
 export interface ValidationResult {
   validActions: SupportedAction[];
+  rejectedActions: Array<{ actionType: string; reason: string }>;
   clarification_questions: string[];
   missing_info: string[];
 }
@@ -95,6 +96,7 @@ function normalizeTaskAction(action: SupportedAction): CreateTaskAction | null {
 
 export function validateParseResult(result: ParseMessageResult): ValidationResult {
   const validActions: SupportedAction[] = [];
+  const rejectedActions: Array<{ actionType: string; reason: string }> = [];
   const clarifications = new Set<string>(result.clarification_questions);
   const missingInfo = new Set<string>(result.missing_info);
 
@@ -104,6 +106,10 @@ export function validateParseResult(result: ParseMessageResult): ValidationResul
       if (!normalized) {
         missingInfo.add("client_name");
         clarifications.add("מה השם המלא של הלקוח כדי שאוכל ליצור או לעדכן את כרטיס הלקוח?");
+        rejectedActions.push({
+          actionType: action.type,
+          reason: "client name is required"
+        });
       } else {
         validActions.push(normalized);
       }
@@ -115,6 +121,10 @@ export function validateParseResult(result: ParseMessageResult): ValidationResul
       if (!normalized) {
         missingInfo.add("task_title");
         clarifications.add("מה בדיוק צריך לבצע כדי שאוכל ליצור את המשימה שביקשת?");
+        rejectedActions.push({
+          actionType: action.type,
+          reason: "task title is required"
+        });
       } else {
         validActions.push(normalized);
       }
@@ -123,6 +133,7 @@ export function validateParseResult(result: ParseMessageResult): ValidationResul
 
   return {
     validActions,
+    rejectedActions,
     clarification_questions: Array.from(clarifications),
     missing_info: Array.from(missingInfo)
   };

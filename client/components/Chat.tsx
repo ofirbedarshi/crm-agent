@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 import MessageBubble from "./MessageBubble";
+import TracePanel from "./TracePanel";
 
 export type Message = {
   role: "user" | "bot";
@@ -12,10 +13,13 @@ const ERROR_TEXT = "קרה משהו, ננסה שוב?";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
 
+type ChatTrace = Record<string, unknown>;
+
 function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [latestTrace, setLatestTrace] = useState<ChatTrace | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const canSend = useMemo(() => input.trim().length > 0 && !isSending, [input, isSending]);
@@ -48,9 +52,10 @@ function Chat() {
         })
       });
 
-      const data = (await response.json()) as { reply?: string };
+      const data = (await response.json()) as { reply?: string; trace?: ChatTrace };
       const reply =
         typeof data.reply === "string" && data.reply.trim().length > 0 ? data.reply.trim() : ERROR_TEXT;
+      setLatestTrace(data.trace && typeof data.trace === "object" ? data.trace : null);
 
       setMessages((prev) => {
         const updated = [...prev];
@@ -58,6 +63,7 @@ function Chat() {
         return updated;
       });
     } catch {
+      setLatestTrace(null);
       setMessages((prev) => {
         const updated = [...prev];
         updated[updated.length - 1] = { role: "bot", text: ERROR_TEXT };
@@ -110,6 +116,7 @@ function Chat() {
           </button>
         </form>
       </section>
+      <TracePanel trace={latestTrace} />
     </main>
   );
 }
