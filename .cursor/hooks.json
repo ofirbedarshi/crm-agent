@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": ".cursor/hooks/eval-backend-change.mjs",
+        "timeout": 600
+      }
+    ]
+  }
+}

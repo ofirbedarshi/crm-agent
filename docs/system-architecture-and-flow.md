@@ -28,7 +28,6 @@ It does not try to be a chat bot. It is a pipeline that decides:
      - conservative behavior (prefer clarification over guessing).
 
 3. **Normalization inside parser stage**
-   - Maps legacy field names into the current schema shape.
    - Keeps only supported action types and known fields.
    - Produces:
      - `actions`
