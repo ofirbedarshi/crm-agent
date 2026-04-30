@@ -56,7 +56,19 @@ npm run eval:llm
 
 The runtime chain is:
 
-`input -> parseMessage -> validateParseResult -> executeActions -> generateResponse`
+`input -> parseMessage(OpenAI -> detectIntent -> extractEntities -> validateRequiredFields -> decideOutput) -> validateParseResult -> executeActions -> generateResponse`
+
+Inside `parseMessage`, the parser pipeline is explicit and fully logged:
+
+1. `detectIntent(rawModelJson)`
+2. `extractEntities(rawModelJson)`
+3. `validateRequiredFields(intent, entities)`
+4. `decideOutput(rawModelJson, intent, validation)`
+
+Notes:
+- The LLM output (`rawModelJson`) is the only interpretation source after the model call.
+- Original input text is not re-parsed by parser pipeline steps.
+- Optional debug mode adds `_debug: { intent, entities, validation }` to parser output.
 
 For a full architecture + business-logic walkthrough, see:
 

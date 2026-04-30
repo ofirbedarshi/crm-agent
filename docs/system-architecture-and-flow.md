@@ -27,12 +27,23 @@ It does not try to be a chat bot. It is a pipeline that decides:
      - required fields expectations,
      - conservative behavior (prefer clarification over guessing).
 
-3. **Normalization inside parser stage**
-   - Keeps only supported action types and known fields.
-   - Produces:
+3. **Explicit parser pipeline (inside `parseMessage`)**
+   - File: `src/parser/parseMessage.ts`
+   - After OpenAI returns JSON, parser runs deterministic internal stages:
+     1. `detectIntent(rawModelJson)`
+     2. `extractEntities(rawModelJson)`
+     3. `validateRequiredFields(intent, entities)`
+     4. `decideOutput(rawModelJson, intent, validation)`
+   - Important behavior:
+     - The LLM output (`rawModelJson`) is the only interpretation source after model call.
+     - No regex/heuristics on original input text in these steps.
+     - Logs are emitted after each parser stage for traceability.
+   - Parser output shape remains:
      - `actions`
      - `missing_info`
      - `clarification_questions`
+   - Optional debug mode can append:
+     - `_debug: { intent, entities, validation }`
 
 4. **Validation stage**
    - File: `src/validation/validateParseResult.ts`

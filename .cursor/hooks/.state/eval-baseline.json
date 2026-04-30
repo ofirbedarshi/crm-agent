@@ -1,5 +1,6 @@
 {
-  "average_score": 7.71,
-  "report_file": "/Users/ofirbedarshi/Desktop/Projects/crm-agent/src/eval/results/evaluation-2026-04-30T14-43-58-322Z.json",
-  "updated_at": "2026-04-30T14:43:58.336Z"
+  "average_score": 7.86,
+  "latency_ms": 53415,
+  "report_file": "/Users/ofirbedarshi/Desktop/Projects/crm-agent/src/eval/results/evaluation-2026-04-30T15-10-46-869Z.json",
+  "updated_at": "2026-04-30T15:10:46.896Z"
 }

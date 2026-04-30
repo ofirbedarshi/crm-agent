@@ -21,6 +21,7 @@ function mockOpenAiJsonContent(contentObject: unknown): void {
 describe("parseMessage", () => {
   beforeEach(() => {
     process.env.OPENAI_API_KEY = "test-key";
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
   });
 
   afterEach(() => {
@@ -191,4 +192,77 @@ describe("parseMessage", () => {
     expect(result.clarification_questions[0]).not.toBe("איזו פעולה תרצה שאבצע מהעדכון הזה?");
   });
 
+  it("returns debug pipeline metadata when debug mode is enabled", async () => {
+    mockOpenAiJsonContent({
+      actions: [
+        {
+          type: "create_task",
+          data: {
+            title: "לחזור ללקוח"
+          }
+        }
+      ],
+      missing_info: [],
+      clarification_questions: []
+    });
+
+    const result = await parseMessage("תזכורת לחזור ללקוח", { debug: true });
+
+    expect(result.actions).toHaveLength(1);
+    expect(result._debug).toEqual({
+      intent: { intent: "create_task" },
+      entities: {
+        title: "לחזור ללקוח"
+      },
+      validation: {
+        isValid: true,
+        missingFields: []
+      }
+    });
+  });
+
+  it("keeps client_name optional for create_task validation", async () => {
+    mockOpenAiJsonContent({
+      actions: [
+        {
+          type: "create_task",
+          data: {
+            title: "לשלוח סיכום שיחה"
+          }
+        }
+      ],
+      missing_info: [],
+      clarification_questions: []
+    });
+
+    const result = await parseMessage("שלח סיכום שיחה ללקוח");
+    const taskAction = result.actions[0];
+    expect(taskAction?.type).toBe("create_task");
+    expect(taskAction?.data.title).toBe("לשלוח סיכום שיחה");
+    expect(taskAction?.data.client_name).toBeUndefined();
+    expect(result.clarification_questions).toEqual([]);
+  });
+
+  it("adds title to missing_info when task title is missing", async () => {
+    mockOpenAiJsonContent({
+      actions: [
+        {
+          type: "create_task",
+          data: {
+            client_name: "דניאל לוי"
+          }
+        }
+      ],
+      missing_info: [],
+      clarification_questions: []
+    });
+
+    const result = await parseMessage("תיצור משימה לדניאל");
+
+    expect(result.actions).toEqual([]);
+    expect(result.missing_info).toContain("title");
+    expect(result.clarification_questions).toContain(
+      "מה בדיוק צריך לבצע כדי שאוכל ליצור את המשימה שביקשת?"
+    );
+  });
 });
