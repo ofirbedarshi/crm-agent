@@ -1,20 +1,33 @@
-import { createOrUpdateClient, createTask } from "../crm/fakeCrmAdapter";
+import { createOrUpdateClient, createTask, type FakeClient } from "../crm/fakeCrmAdapter";
+import { recordPipelineClientUpsert, recordPipelineTask } from "../crm/demoCrmStore";
 import type { SupportedAction } from "../types/parser";
 
 export interface ActionExecutionResult {
   actionType: SupportedAction["type"];
   success: boolean;
   entityId?: string;
+  /** Set only for create_or_update_client (CRM adapter outcome). */
+  clientOperation?: "created" | "updated";
+  /** Present after successful create_or_update_client — merged CRM snapshot for replies. */
+  clientSnapshot?: FakeClient;
 }
 
 export function executeActions(actions: SupportedAction[]): ActionExecutionResult[] {
   return actions.map((action) => {
     if (action.type === "create_or_update_client") {
-      const client = createOrUpdateClient(action.data);
-      return { actionType: action.type, success: true, entityId: client.id };
+      const { client, operation } = createOrUpdateClient(action.data);
+      recordPipelineClientUpsert(action.data, client.id, operation);
+      return {
+        actionType: action.type,
+        success: true,
+        entityId: client.id,
+        clientOperation: operation,
+        clientSnapshot: client
+      };
     }
 
     const task = createTask(action.data);
+    recordPipelineTask(action.data, task.id);
     return { actionType: action.type, success: true, entityId: task.id };
   });
 }

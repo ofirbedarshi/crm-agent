@@ -14,8 +14,13 @@ interface IntentResult {
 interface ExtractedEntities {
   name?: string;
   city?: string;
+  areas?: string[];
   property_type?: string;
   budget?: number;
+  features?: string[];
+  lead_source?: string;
+  lead_temperature?: "hot" | "warm" | "cold" | "unknown";
+  flexible_entry?: string;
   due_time?: string;
   title?: string;
   client_name?: string;
@@ -67,8 +72,32 @@ function asNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function asStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const normalized = value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+
+  if (normalized.length === 0) {
+    return undefined;
+  }
+
+  return Array.from(new Set(normalized));
+}
+
 function normalizeRole(value: unknown): "buyer" | "owner" | "unknown" | undefined {
   if (value === "buyer" || value === "owner" || value === "unknown") {
+    return value;
+  }
+  return undefined;
+}
+
+function normalizeLeadTemperature(value: unknown): "hot" | "warm" | "cold" | "unknown" | undefined {
+  if (value === "hot" || value === "warm" || value === "cold" || value === "unknown") {
     return value;
   }
   return undefined;
@@ -85,25 +114,36 @@ function normalizeClientAction(data: Record<string, unknown>): SupportedAction |
     asNonEmptyString(nestedPreferences.city) ??
     asNonEmptyString(data.city) ??
     asNonEmptyString(data.location);
+  const areas = asStringArray(nestedPreferences.areas) ?? asStringArray(data.areas);
   const propertyType =
     asNonEmptyString(nestedPreferences.property_type) ??
     asNonEmptyString(data.property_type) ??
     asNonEmptyString(data.search_type);
   const budget = asNumber(nestedPreferences.budget) ?? asNumber(data.budget);
   const entryDate = asNonEmptyString(nestedPreferences.entry_date) ?? asNonEmptyString(data.entry_date);
+  const features = asStringArray(nestedPreferences.features) ?? asStringArray(data.features);
+  const flexibleEntry =
+    asNonEmptyString(nestedPreferences.flexible_entry) ?? asNonEmptyString(data.flexible_entry);
 
   const preferences: Record<string, unknown> = {};
   if (city) preferences.city = city;
+  if (areas) preferences.areas = areas;
   if (propertyType) preferences.property_type = propertyType;
   if (budget !== undefined) preferences.budget = budget;
   if (entryDate) preferences.entry_date = entryDate;
+  if (features) preferences.features = features;
+  if (flexibleEntry) preferences.flexible_entry = flexibleEntry;
 
   const role = normalizeRole(data.role);
+  const leadSource = asNonEmptyString(data.lead_source);
+  const leadTemperature = normalizeLeadTemperature(data.lead_temperature);
   return {
     type: "create_or_update_client",
     data: {
       name,
       ...(role ? { role } : {}),
+      ...(leadSource ? { lead_source: leadSource } : {}),
+      ...(leadTemperature ? { lead_temperature: leadTemperature } : {}),
       ...(Object.keys(preferences).length > 0 ? { preferences } : {})
     }
   };
@@ -224,11 +264,17 @@ function extractEntities(rawModelJson: unknown): ExtractedEntities {
     asNonEmptyString(nestedPreferences.city) ??
     asNonEmptyString(clientData.city) ??
     asNonEmptyString(clientData.location);
+  const areas = asStringArray(nestedPreferences.areas) ?? asStringArray(clientData.areas);
   const propertyType =
     asNonEmptyString(nestedPreferences.property_type) ??
     asNonEmptyString(clientData.property_type) ??
     asNonEmptyString(clientData.search_type);
   const budget = asNumber(nestedPreferences.budget) ?? asNumber(clientData.budget);
+  const features = asStringArray(nestedPreferences.features) ?? asStringArray(clientData.features);
+  const leadSource = asNonEmptyString(clientData.lead_source);
+  const leadTemperature = normalizeLeadTemperature(clientData.lead_temperature);
+  const flexibleEntry =
+    asNonEmptyString(nestedPreferences.flexible_entry) ?? asNonEmptyString(clientData.flexible_entry);
   const dueTime = asNonEmptyString(taskData.due_time) ?? asNonEmptyString(taskData.due_date);
   const title =
     asNonEmptyString(taskData.title) ??
@@ -240,8 +286,13 @@ function extractEntities(rawModelJson: unknown): ExtractedEntities {
   return {
     ...(name ? { name } : {}),
     ...(city ? { city } : {}),
+    ...(areas ? { areas } : {}),
     ...(propertyType ? { property_type: propertyType } : {}),
     ...(budget !== undefined ? { budget } : {}),
+    ...(features ? { features } : {}),
+    ...(leadSource ? { lead_source: leadSource } : {}),
+    ...(leadTemperature ? { lead_temperature: leadTemperature } : {}),
+    ...(flexibleEntry ? { flexible_entry: flexibleEntry } : {}),
     ...(dueTime ? { due_time: dueTime } : {}),
     ...(title ? { title } : {}),
     ...(clientName ? { client_name: clientName } : {})

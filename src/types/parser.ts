@@ -2,9 +2,12 @@ export type SupportedActionType = "create_or_update_client" | "create_task";
 
 export interface ClientPreferences {
   city?: string;
+  areas?: string[];
   property_type?: string;
   budget?: number;
   entry_date?: string;
+  features?: string[];
+  flexible_entry?: string;
 }
 
 export interface CreateOrUpdateClientAction {
@@ -12,6 +15,8 @@ export interface CreateOrUpdateClientAction {
   data: {
     name: string;
     role?: "buyer" | "owner" | "unknown";
+    lead_source?: string;
+    lead_temperature?: "hot" | "warm" | "cold" | "unknown";
     preferences?: ClientPreferences;
   };
 }

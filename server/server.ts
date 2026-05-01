@@ -1,9 +1,10 @@
 import "dotenv/config";
 import cors from "cors";
 import express from "express";
+import { getDemoCrmState, resetDemoCrmStore } from "../src/crm/demoCrmStore";
+import { resetFakeCrm } from "../src/crm/fakeCrmAdapter";
 import { runCrmAgent } from "../src/pipeline/runCrmAgent";
 import type { CrmPipelineTrace } from "../src/pipeline/trace";
-import type { ParseMessageResult, SupportedAction } from "../src/types/parser";
 
 type Message = {
   role: "user" | "bot";
@@ -23,6 +24,16 @@ app.use(express.json());
 
 app.get("/health", (_req, res) => {
   res.status(200).json({ ok: true });
+});
+
+app.get("/crm-demo/state", (_req, res) => {
+  res.status(200).json(getDemoCrmState());
+});
+
+app.post("/crm-demo/reset", (_req, res) => {
+  resetDemoCrmStore();
+  resetFakeCrm();
+  res.status(200).json({ ok: true, state: getDemoCrmState() });
 });
 
 function isMessage(value: unknown): value is Message {
@@ -53,48 +64,6 @@ function historyToText(history: Message[]): string {
   return history.map((item) => `${item.role}: ${item.text}`).join("\n");
 }
 
-function actionToSentence(action: SupportedAction): string {
-  if (action.type === "create_task") {
-    const taskFor = action.data.client_name ? ` עבור ${action.data.client_name}` : "";
-    const due = action.data.due_time ? ` ל${action.data.due_time}` : "";
-    return `יצרתי משימה${taskFor}${due}: ${action.data.title}`;
-  }
-
-  const roleText =
-    action.data.role === "buyer" ? " כרוכש" : action.data.role === "owner" ? " כבעל נכס" : "";
-  return `עדכנתי את פרטי הלקוח ${action.data.name}${roleText}`;
-}
-
-function missingInfoToQuestion(missingInfo: string[]): string {
-  const key = missingInfo[0];
-  if (key === "name") {
-    return "חסר לי פרט קטן, מה השם המלא של הלקוח?";
-  }
-  if (key === "title") {
-    return "חסר לי פרט קטן, מה המשימה המדויקת שצריך לבצע?";
-  }
-  return "חסר לי פרט קטן כדי להמשיך, אפשר לחדד?";
-}
-
-function formatResponse(result: ParseMessageResult): string {
-  if (result.actions.length > 0) {
-    if (result.actions.length === 1) {
-      return actionToSentence(result.actions[0]);
-    }
-    return "הבנתי את הבקשה וביצעתי את הפעולות שצריך";
-  }
-
-  if (result.clarification_questions.length > 0) {
-    return result.clarification_questions[0] ?? "אפשר לחדד רגע את הבקשה?";
-  }
-
-  if (result.missing_info.length > 0) {
-    return missingInfoToQuestion(result.missing_info);
-  }
-
-  return "לא בטוח שהבנתי עד הסוף, אפשר לחדד?";
-}
-
 function buildPipelineInput(message: string, history: Message[]): string {
   const contextText = historyToText(history);
   if (!contextText) {
@@ -120,7 +89,7 @@ app.post("/chat", async (req, res) => {
       pipelineInput,
       historyCount: normalizedHistory.length
     });
-    const reply = formatResponse(result.parsed);
+    const reply = result.response;
     const trace: CrmPipelineTrace = {
       ...result.trace,
       response: result.trace.response

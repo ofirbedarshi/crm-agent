@@ -1,6 +1,6 @@
 import { parseMessage } from "../parser/parseMessage";
-import { executeActions } from "../orchestrator/executeActions";
-import { generateResponse } from "../response/generateResponse";
+import { executeActions, type ActionExecutionResult } from "../orchestrator/executeActions";
+import { composeUserReply } from "../response/composeUserReply";
 import { validateParseResult } from "../validation/validateParseResult";
 import type { ParseMessageResult, SupportedAction } from "../types/parser";
 import type { CrmPipelineTrace } from "./trace";
@@ -8,6 +8,7 @@ import type { CrmPipelineTrace } from "./trace";
 export interface RunCrmAgentResult {
   parsed: ParseMessageResult;
   validActions: SupportedAction[];
+  executionResults: ActionExecutionResult[];
   response: string;
   trace: CrmPipelineTrace;
 }
@@ -50,11 +51,16 @@ export async function runCrmAgent(input: RunCrmAgentInput): Promise<RunCrmAgentR
     clarificationQuestions: validation.clarification_questions
   };
 
-  if (validation.clarification_questions.length > 0) {
+  const clarifyOnly =
+    validation.validActions.length === 0 && validation.clarification_questions.length > 0;
+
+  if (clarifyOnly) {
     const responseStartedAt = Date.now();
-    const generatedResponse = generateResponse({
+    const generatedResponse = composeUserReply({
+      parsed,
+      validation,
       executedActions: [],
-      clarificationQuestions: validation.clarification_questions
+      executionResults: []
     });
     trace.timing.responseMs = Date.now() - responseStartedAt;
     trace.timing.totalMs = Date.now() - startedAt;
@@ -66,6 +72,7 @@ export async function runCrmAgent(input: RunCrmAgentInput): Promise<RunCrmAgentR
     return {
       parsed,
       validActions: validation.validActions,
+      executionResults: [],
       response: generatedResponse,
       trace
     };
@@ -79,21 +86,25 @@ export async function runCrmAgent(input: RunCrmAgentInput): Promise<RunCrmAgentR
   };
 
   const responseStartedAt = Date.now();
-  const generatedResponse = generateResponse({
+  const generatedResponse = composeUserReply({
+    parsed,
+    validation,
     executedActions: validation.validActions,
-    clarificationQuestions: []
+    executionResults
   });
   trace.timing.responseMs = Date.now() - responseStartedAt;
   trace.timing.totalMs = Date.now() - startedAt;
+  const replyType = validation.validActions.length > 0 ? "actions" : "fallback";
   trace.response = {
     generatedResponse,
     formattedReply: generatedResponse,
-    replyType: validation.validActions.length > 0 ? "actions" : "fallback"
+    replyType
   };
 
   return {
     parsed,
     validActions: validation.validActions,
+    executionResults,
     response: generatedResponse,
     trace
   };

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runCrmAgent } from "./runCrmAgent";
+import { getDemoCrmState, resetDemoCrmStore } from "../crm/demoCrmStore";
 import { getFakeCrmState, resetFakeCrm } from "../crm/fakeCrmAdapter";
 
 vi.mock("../parser/parseMessage", () => {
@@ -15,6 +16,7 @@ const parseMessageMock = vi.mocked(parseMessage);
 describe("runCrmAgent", () => {
   beforeEach(() => {
     resetFakeCrm();
+    resetDemoCrmStore();
     vi.clearAllMocks();
   });
 
@@ -40,7 +42,11 @@ describe("runCrmAgent", () => {
     expect(result.validActions).toHaveLength(1);
     expect(state.clients).toHaveLength(1);
     expect(state.clients[0]?.name).toBe("רוני אביטל");
-    expect(result.response).toContain("לקוחות");
+    expect(state.activityLog.length).toBeGreaterThanOrEqual(1);
+    expect(getDemoCrmState().clients).toHaveLength(1);
+    expect(getDemoCrmState().clients[0]?.name).toBe("רוני אביטל");
+    expect(result.response).toContain("יצרתי כרטיס לקוח");
+    expect(result.executionResults).toHaveLength(1);
     expect(result.trace.validation?.validActions).toHaveLength(1);
   });
 
@@ -59,6 +65,7 @@ describe("runCrmAgent", () => {
           type: "create_task",
           data: {
             title: "לתאם שיחה למחר",
+            due_time: "מחר",
             client_name: "הילה מזרחי"
           }
         }
@@ -73,9 +80,11 @@ describe("runCrmAgent", () => {
     expect(result.validActions).toHaveLength(2);
     expect(state.clients).toHaveLength(1);
     expect(state.tasks).toHaveLength(1);
-    expect(result.response).toContain("לקוחות");
-    expect(result.response).toContain("משימות");
+    expect(state.activityLog.length).toBeGreaterThanOrEqual(2);
+    expect(result.response).toContain("יצרתי כרטיס לקוח");
+    expect(result.response).toContain("יצרתי משימה");
     expect(result.trace.crm?.executionResults).toHaveLength(2);
+    expect(getDemoCrmState().calendar.length).toBeGreaterThanOrEqual(1);
   });
 
   it("missing client name returns clarification and executes nothing", async () => {
@@ -102,13 +111,41 @@ describe("runCrmAgent", () => {
     expect(result.trace.response?.replyType).toBe("clarification");
   });
 
+  it("runs client upsert even when a follow-up task needs due_time clarification", async () => {
+    parseMessageMock.mockResolvedValue({
+      actions: [
+        {
+          type: "create_or_update_client",
+          data: { name: "דניאל", role: "buyer", preferences: { areas: ["רמת גן"] } }
+        },
+        {
+          type: "create_task",
+          data: { title: "להתקשר לדניאל", client_name: "דניאל" }
+        }
+      ],
+      missing_info: [],
+      clarification_questions: []
+    });
+
+    const result = await runCrmAgent({ rawMessage: "input", pipelineInput: "input", historyCount: 0 });
+    const state = getFakeCrmState();
+
+    expect(result.validActions).toHaveLength(1);
+    expect(state.clients).toHaveLength(1);
+    expect(state.tasks).toHaveLength(0);
+    expect(result.executionResults).toHaveLength(1);
+    expect(result.response).toContain("יצרתי כרטיס לקוח");
+    expect(result.response).toContain("מתי תרצה");
+    expect(result.trace.response?.replyType).toBe("actions");
+  });
+
   it("ambiguous task does not invent client_name", async () => {
     parseMessageMock.mockResolvedValue({
       actions: [
         {
           type: "create_task",
           data: {
-            title: "לחזור בנושא המסמכים"
+            title: "לשלוח מסמכים במייל"
           }
         }
       ],

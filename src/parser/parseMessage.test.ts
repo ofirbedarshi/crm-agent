@@ -277,4 +277,66 @@ describe("parseMessage", () => {
       "מה בדיוק צריך לבצע כדי שאוכל ליצור את המשימה שביקשת?"
     );
   });
+
+  it("keeps full lead context for serious buyer with two follow-up tasks", async () => {
+    mockOpenAiJsonContent({
+      actions: [
+        {
+          type: "create_or_update_client",
+          data: {
+            name: "דניאל לוי",
+            role: "buyer",
+            lead_source: "פייסבוק",
+            lead_temperature: "hot",
+            preferences: {
+              areas: ["גבעתיים", "רמת גן"],
+              property_type: "דירת 4 חדרים",
+              budget: 3400000,
+              features: ["מעלית", "חניה"],
+              flexible_entry: "עד חצי שנה"
+            }
+          }
+        },
+        {
+          type: "create_task",
+          data: {
+            title: "לשלוח לדניאל לוי שלוש אופציות היום בערב",
+            due_time: "היום בערב",
+            client_name: "דניאל לוי"
+          }
+        },
+        {
+          type: "create_task",
+          data: {
+            title: "לחזור לדניאל לוי מחר ב-11:00",
+            due_time: "מחר ב-11:00",
+            client_name: "דניאל לוי"
+          }
+        }
+      ],
+      missing_info: [],
+      clarification_questions: []
+    });
+
+    const result = await parseMessage(
+      "דיברתי עכשיו עם דניאל לוי, הגיע מפייסבוק. מחפש דירת 4 חדרים בגבעתיים או רמת גן, תקציב עד 3.4 מיליון, מעדיף מעלית וחניה, גמיש בכניסה עד חצי שנה. נשמע רציני, ביקש שאשלח לו שלוש אופציות היום בערב ואחזור אליו מחר ב־11."
+    );
+
+    const clientAction = result.actions.find((a) => a.type === "create_or_update_client");
+    expect(clientAction?.data).toEqual({
+      name: "דניאל לוי",
+      role: "buyer",
+      lead_source: "פייסבוק",
+      lead_temperature: "hot",
+      preferences: {
+        areas: ["גבעתיים", "רמת גן"],
+        property_type: "דירת 4 חדרים",
+        budget: 3400000,
+        features: ["מעלית", "חניה"],
+        flexible_entry: "עד חצי שנה"
+      }
+    });
+    expect(result.actions.filter((a) => a.type === "create_task")).toHaveLength(2);
+    expect(result.clarification_questions).toEqual([]);
+  });
 });

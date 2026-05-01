@@ -1,25 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 import MessageBubble from "./MessageBubble";
-import TracePanel from "./TracePanel";
 
 export type Message = {
   role: "user" | "bot";
   text: string;
 };
 
+export type ChatTrace = Record<string, unknown>;
+
 const THINKING_TEXT = "חושב...";
 const ERROR_TEXT = "קרה משהו, ננסה שוב?";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
 
-type ChatTrace = Record<string, unknown>;
+interface ChatProps {
+  onTraceChange?: (trace: ChatTrace | null) => void;
+}
 
-function Chat() {
+function Chat({ onTraceChange }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [latestTrace, setLatestTrace] = useState<ChatTrace | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const canSend = useMemo(() => input.trim().length > 0 && !isSending, [input, isSending]);
@@ -55,7 +57,8 @@ function Chat() {
       const data = (await response.json()) as { reply?: string; trace?: ChatTrace };
       const reply =
         typeof data.reply === "string" && data.reply.trim().length > 0 ? data.reply.trim() : ERROR_TEXT;
-      setLatestTrace(data.trace && typeof data.trace === "object" ? data.trace : null);
+      const nextTrace = data.trace && typeof data.trace === "object" ? data.trace : null;
+      onTraceChange?.(nextTrace);
 
       setMessages((prev) => {
         const updated = [...prev];
@@ -63,7 +66,7 @@ function Chat() {
         return updated;
       });
     } catch {
-      setLatestTrace(null);
+      onTraceChange?.(null);
       setMessages((prev) => {
         const updated = [...prev];
         updated[updated.length - 1] = { role: "bot", text: ERROR_TEXT };
@@ -87,8 +90,8 @@ function Chat() {
   }
 
   return (
-    <main className="chat-page">
-      <section className="chat-shell">
+    <main className="chat-pane-root" dir="rtl">
+      <section className="chat-shell chat-shell-fill">
         <header className="chat-header">CRM Chat</header>
 
         <div className="chat-messages">
@@ -116,7 +119,6 @@ function Chat() {
           </button>
         </form>
       </section>
-      <TracePanel trace={latestTrace} />
     </main>
   );
 }

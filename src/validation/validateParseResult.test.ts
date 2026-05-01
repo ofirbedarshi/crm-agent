@@ -40,4 +40,27 @@ describe("validateParseResult", () => {
       "מה בדיוק צריך לבצע כדי שאוכל ליצור את המשימה שביקשת?"
     );
   });
+
+  it("rejects follow-up tasks that lack any due window", () => {
+    const result = validateParseResult({
+      actions: [
+        {
+          type: "create_task",
+          data: {
+            title: "להתקשר לדניאל לגבי ההצעות",
+            client_name: "דניאל"
+          }
+        }
+      ],
+      missing_info: [],
+      clarification_questions: []
+    });
+
+    expect(result.validActions).toEqual([]);
+    expect(result.rejectedActions).toContainEqual({
+      actionType: "create_task",
+      reason: "due_time required for scheduled tasks"
+    });
+    expect(result.clarification_questions.some((q) => q.includes("שעה מדויקת לא חובה"))).toBe(true);
+  });
 });
