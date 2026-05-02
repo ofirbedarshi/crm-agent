@@ -1,5 +1,10 @@
 import { PARSER_SYSTEM_PROMPT } from "./systemPrompt";
-import type { ParseMessageResult, SupportedAction, SupportedActionType } from "../types/parser";
+import type {
+  ClientInteractionPatch,
+  ParseMessageResult,
+  SupportedAction,
+  SupportedActionType
+} from "../types/parser";
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const DEFAULT_MODEL = "gpt-4o-mini";
@@ -107,6 +112,40 @@ function normalizeLeadTemperature(value: unknown): "hot" | "warm" | "cold" | "un
   return undefined;
 }
 
+function normalizeClientInteractionPatches(data: Record<string, unknown>): ClientInteractionPatch[] | undefined {
+  const raw = data.interactions;
+  if (!Array.isArray(raw)) {
+    return undefined;
+  }
+  const out: ClientInteractionPatch[] = [];
+  for (const item of raw) {
+    if (!isRecord(item)) {
+      continue;
+    }
+    const summary =
+      asNonEmptyString(item.summary) ??
+      asNonEmptyString(item.description) ??
+      asNonEmptyString(item.note);
+    if (!summary) {
+      continue;
+    }
+    const property_address =
+      asNonEmptyString(item.property_address) ?? asNonEmptyString(item.property);
+    const kind =
+      asNonEmptyString(item.kind) ??
+      asNonEmptyString(item.type) ??
+      asNonEmptyString(item.interaction_type);
+    const extraProps = asStringArray(item.property_addresses);
+    out.push({
+      summary,
+      ...(property_address ? { property_address } : {}),
+      ...(extraProps ? { property_addresses: extraProps } : {}),
+      ...(kind ? { kind } : {})
+    });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 function normalizeClientAction(data: Record<string, unknown>): SupportedAction | null {
   const name = asNonEmptyString(data.name) ?? asNonEmptyString(data.full_name);
   if (!name) {
@@ -141,6 +180,7 @@ function normalizeClientAction(data: Record<string, unknown>): SupportedAction |
   const role = normalizeRole(data.role);
   const leadSource = asNonEmptyString(data.lead_source);
   const leadTemperature = normalizeLeadTemperature(data.lead_temperature);
+  const interactions = normalizeClientInteractionPatches(data);
   return {
     type: "create_or_update_client",
     data: {
@@ -148,7 +188,8 @@ function normalizeClientAction(data: Record<string, unknown>): SupportedAction |
       ...(role ? { role } : {}),
       ...(leadSource ? { lead_source: leadSource } : {}),
       ...(leadTemperature ? { lead_temperature: leadTemperature } : {}),
-      ...(Object.keys(preferences).length > 0 ? { preferences } : {})
+      ...(Object.keys(preferences).length > 0 ? { preferences } : {}),
+      ...(interactions ? { interactions } : {})
     }
   };
 }
@@ -409,9 +450,6 @@ function collectMissingFieldsFromRawActions(rawModelJson: unknown): string[] {
       const addr = propertyAddressFromData(data);
       if (!addr) {
         missing.push("property_address");
-      }
-      if (!asNonEmptyString(data.owner_client_name)) {
-        missing.push("property_owner_client_name");
       }
     }
   }

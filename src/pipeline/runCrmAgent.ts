@@ -67,16 +67,18 @@ export async function runCrmAgent(input: RunCrmAgentInput): Promise<RunCrmAgentR
   trace.timing.validateMs = Date.now() - validateStartedAt;
 
   const resolveStartedAt = Date.now();
+  const crmSnapshot = getFakeCrmState();
   const resolution = resolveAndEnrichCrmActions(
     validationRaw.validActions,
-    getFakeCrmState().clients,
-    input.rawMessage
+    crmSnapshot.clients,
+    input.rawMessage,
+    crmSnapshot.properties
   );
   trace.timing.resolveMs = Date.now() - resolveStartedAt;
 
   const validation: ValidationResult = {
     ...validationRaw,
-    validActions: resolution.validActions,
+    validActions: sortActionsForEntityLinkage(resolution.validActions),
     clarification_questions: Array.from(
       new Set([...validationRaw.clarification_questions, ...resolution.clarifications])
     ),

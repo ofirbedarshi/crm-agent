@@ -42,7 +42,15 @@ Required action schemas:
       "entry_date"?: string,
       "features"?: string[],
       "flexible_entry"?: string
-    }
+    },
+    "interactions"?: Array<{
+      "summary": string,
+      "property_address"?: string,
+      "property_addresses"?: string[],
+      "kind"?: string,
+      "type"?: string,
+      "interaction_type"?: string
+    }>
   }
 }
 
@@ -67,15 +75,16 @@ Required action schemas:
     "asking_price"?: number,          // מחיר מבוקש בשקלים (מספר)
     "price_note"?: string,            // e.g. צורך לאמת מול שוק, טרם סופי
     "general_notes"?: string,         // הקשר כללי (בלעדיות, שיחה עם הסוכן…)
-    "owner_client_name": string       // required — שם מלא זהה ל-create_or_update_client.data.name של בעל הנכס
+    "owner_client_name"?: string       // when the seller/owner is known — full name matching that seller client card; omit when unknown (buyer-side visit notes only is allowed in the demo)
   }
 }
 
 Entity linkage (critical — CRM demo rules):
 - Every create_task MUST include client_name (full legal-style name string matching the client card).
-- Every create_or_update_property MUST include owner_client_name identical to that seller client card name.
-- When opening both a seller client card and their listing + tasks in one message: emit actions in order — create_or_update_client (seller, role owner) FIRST, then create_or_update_property (with owner_client_name), then create_task(s) with client_name. Do NOT emit an orphaned listing without owner_client_name.
-- If you cannot confidently tie listing/task to a named client from the text, use clarification_questions instead of partially-filled actions.
+- When the seller/owner is known: create_or_update_property MUST include owner_client_name identical to that seller client card name.
+- When the seller/owner is NOT known (e.g. showing feedback without the seller named): emit create_or_update_property with address + notes/price_note from the visit, and omit owner_client_name — do not invent an owner.
+- When opening both a seller client card and their listing + tasks in one message: emit actions in order — create_or_update_client (seller, role owner) FIRST, then create_or_update_property (with owner_client_name), then create_task(s) with client_name.
+- If you cannot confidently tie a task to a named client from the text, use clarification_questions instead of partially-filled actions.
 
 Data extraction rules:
 - Do not invent critical facts.
@@ -84,6 +93,9 @@ Data extraction rules:
 - If multiple areas/cities are mentioned (e.g. "גבעתיים או רמת גן"), put all of them in preferences.areas.
 - If only one city is mentioned, you may put it in preferences.city (and optionally in preferences.areas with one value).
 - Put amenity preferences like מעלית/חניה/מרפסת under preferences.features as an array (for buyers).
+- After visits/calls/meetings, append concise rows under create_or_update_client.data.interactions (each entry needs summary text; tie to property_address when the touch references a concrete listing).
+- Optionally set interactions[].kind (aliases: type, interaction_type) to the touch modality — e.g. פגישה פנים אל פנים, שיחת טלפון, הודעה.
+- When several listings appear in one touch, list extras under interactions[].property_addresses (still use property_address for the primary listing when there is one).
 - Put entry flexibility expressions like "גמיש בכניסה עד חצי שנה" in preferences.flexible_entry (for buyers).
 - Seller / מוכר (role "owner"): put ONLY the asking price under preferences.budget (sale expectation in ₪). Do NOT stuff listing facts (rooms, elevator, parking, address) into client preferences — those belong exclusively in create_or_update_property for that listing.
 - When the user describes a concrete property for sale (כתובת, חדרים, קומה, מעלית, חניה, טאבו, מחיר מבוקש), emit create_or_update_property with address + rooms + features + asking_price + notes as appropriate; link owner_client_name to the seller when known.
@@ -105,6 +117,14 @@ Data extraction rules:
 - Buyer search wishes → data.preferences on create_or_update_client. Seller listing facts → create_or_update_property only (except asking price on the seller client card via preferences.budget).
 - If intent exists but details are incomplete, prefer clarification_questions over partial actions.
 - actions = [] is acceptable when required data is missing.
+
+Post-showing updates (critical):
+- If the agent describes a visit/showing at a concrete address (phrases like "הייתי … בדירה", "ביקור בדירה") and names a buyer, emit create_or_update_client for that person: if they appear in the CRM snapshot, update that row; if the snapshot is empty or they are new, create them with role "buyer" and lead_temperature matching readiness (for hesitation such as "מתעניין אבל מתלבט" use "warm").
+- Include data.interactions with at least one object: interactions[].summary must capture the positives, objections, and hesitation the user quoted; include specific money figures when the user gives them (for example keep "כ־150 אלף" / "150 אלף ₪" in the summary text — do not drop the number).
+- Set interactions[].property_address to the street listing from the message (e.g. "הירדן 12") when it is identifiable.
+- Showing feedback (likes, objections, price reactions, hesitation) belongs ONLY in create_or_update_client.interactions[].summary — do NOT duplicate visit narrative into create_or_update_property price_note or general_notes unless the user explicitly states new factual listing attributes (rooms, asking price, structural defects as listing facts). Prefer omitting create_or_update_property for buyer-only visits when the CRM snapshot is empty; linkage may still create a bare listing row without notes.
+- If the snapshot already contains a property row for that address (same street + number), you MAY emit create_or_update_property with only address + owner_client_name from the snapshot for linkage — still no visit prose on the listing card unless the user gave distinct listing facts as above.
+- For follow-ups ("לחזור אליו … מחר בערב"), prefer one create_task; title should name that buyer; client_name must match the buyer client name used in create_or_update_client in the same response.
 
 Clarification question quality rules (critical):
 - Questions must be specific, contextual, and actionable.

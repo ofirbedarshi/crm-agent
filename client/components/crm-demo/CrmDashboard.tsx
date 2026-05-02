@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCrmDemo } from "./CrmDemoContext";
 import type {
   CalendarEntryKind,
   ClientPreferences,
   DemoCalendarEntry,
+  DemoClient,
+  DemoClientInteraction,
   DemoProperty
 } from "./types";
 
@@ -56,6 +58,35 @@ function calendarKindEmoji(kind: CalendarEntryKind): string {
   return "🟡";
 }
 
+function normalizeStreetToken(s: string): string {
+  return s.trim().replace(/\s+/g, " ");
+}
+
+function propertiesMatchingAddresses(
+  tokens: string[] | undefined,
+  allProperties: DemoProperty[]
+): DemoProperty[] {
+  if (!tokens?.length) {
+    return [];
+  }
+  const norms = tokens.map(normalizeStreetToken).filter(Boolean);
+  return allProperties.filter((p) => {
+    const addr = normalizeStreetToken(p.address);
+    return norms.some((t) => addr.includes(t) || t.includes(addr));
+  });
+}
+
+function calendarEntriesByIds(
+  ids: string[] | undefined,
+  calendar: DemoCalendarEntry[]
+): DemoCalendarEntry[] {
+  if (!ids?.length) {
+    return [];
+  }
+  const wanted = new Set(ids);
+  return calendar.filter((e) => wanted.has(e.id));
+}
+
 function groupCalendarByDate(entries: DemoCalendarEntry[]): [string, DemoCalendarEntry[]][] {
   const map = new Map<string, DemoCalendarEntry[]>();
   for (const e of entries) {
@@ -71,6 +102,154 @@ function groupCalendarByDate(entries: DemoCalendarEntry[]): [string, DemoCalenda
 
 function EmptyHint() {
   return <p className="crm-empty-hint">אין נתונים להצגה</p>;
+}
+
+function ClientDetailPanel({
+  client,
+  properties,
+  calendar,
+  onClose
+}: {
+  client: DemoClient;
+  properties: DemoProperty[];
+  calendar: DemoCalendarEntry[];
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const timeline = useMemo(
+    () => [...(client.interactions ?? [])].reverse(),
+    [client.interactions]
+  );
+
+  return (
+    <>
+      <button type="button" className="crm-panel-backdrop" aria-label="סגור פאנל" onClick={onClose} />
+      <aside className="crm-detail-panel" aria-modal="true" role="dialog" aria-labelledby="crm-detail-title">
+        <div className="crm-detail-panel-header">
+          <h2 id="crm-detail-title" className="crm-detail-panel-title">
+            {client.name}
+          </h2>
+          <button type="button" className="crm-detail-close" onClick={onClose}>
+            סגור
+          </button>
+        </div>
+        <div className="crm-detail-scroll">
+          <section className="crm-detail-section">
+            <h3 className="crm-detail-heading">פרטי לקוח</h3>
+            <dl className="crm-detail-dl">
+              <div>
+                <dt>טלפון</dt>
+                <dd>{client.phone ?? "—"}</dd>
+              </div>
+              <div>
+                <dt>סוג</dt>
+                <dd>
+                  <span className="crm-badge crm-badge-muted">{client.kind}</span>
+                </dd>
+              </div>
+              <div>
+                <dt>סטטוס</dt>
+                <dd>
+                  <span className="crm-badge">{client.status}</span>
+                </dd>
+              </div>
+              <div>
+                <dt>מקור ליד</dt>
+                <dd>{client.leadSource ?? "—"}</dd>
+              </div>
+              <div>
+                <dt>בשלות ליד</dt>
+                <dd>{client.leadTemperature ?? "—"}</dd>
+              </div>
+              <div className="crm-detail-dl-full">
+                <dt>העדפות</dt>
+                <dd>{formatPreferences(client.preferences)}</dd>
+              </div>
+              <div className="crm-detail-dl-full">
+                <dt>הערות</dt>
+                <dd>{client.notes ?? "—"}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="crm-detail-section">
+            <h3 className="crm-detail-heading">תיעוד מגעים</h3>
+            {timeline.length === 0 ? (
+              <p className="crm-detail-muted">אין תיעוד מגע עדיין.</p>
+            ) : (
+              <ul className="crm-interaction-list">
+                {timeline.map((ix: DemoClientInteraction) => {
+                  const linkedProps = propertiesMatchingAddresses(ix.propertyAddresses, properties);
+                  const linkedTasks = calendarEntriesByIds(ix.relatedTaskIds, calendar);
+                  return (
+                    <li key={ix.id} className="crm-interaction-card">
+                      <div className="crm-interaction-card-head">
+                        {ix.kind ? (
+                          <span className="crm-badge crm-badge-muted">{ix.kind}</span>
+                        ) : (
+                          <span className="crm-badge crm-badge-muted">מגע</span>
+                        )}
+                        <span className="crm-interaction-when">{ix.recordedAt}</span>
+                      </div>
+                      <p className="crm-interaction-summary">{ix.summary}</p>
+                      {ix.propertyAddresses && ix.propertyAddresses.length > 0 ? (
+                        <div className="crm-interaction-sub">
+                          <span className="crm-interaction-sub-label">כתובות במגע:</span>
+                          <ul className="crm-interaction-addresses">
+                            {ix.propertyAddresses.map((addr) => (
+                              <li key={addr}>{addr}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      {linkedProps.length > 0 ? (
+                        <div className="crm-interaction-sub">
+                          <span className="crm-interaction-sub-label">נכסים תואמים במערכת:</span>
+                          <ul className="crm-interaction-properties">
+                            {linkedProps.map((p) => (
+                              <li key={p.id}>
+                                <strong>{p.address}</strong>
+                                {p.city ? `, ${p.city}` : ""} · {p.rooms} חדרים · {formatPrice(p.price)}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      {linkedTasks.length > 0 ? (
+                        <div className="crm-interaction-sub">
+                          <span className="crm-interaction-sub-label">משימות קשורות:</span>
+                          <ul className="crm-interaction-tasks">
+                            {linkedTasks.map((t) => (
+                              <li key={t.id}>
+                                <strong>{t.title}</strong>
+                                <span className="crm-interaction-task-meta">
+                                  {" "}
+                                  · {t.kind} · {t.date}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </div>
+      </aside>
+    </>
+  );
 }
 
 function PropertyCard({ p }: { p: DemoProperty }) {
@@ -101,8 +280,16 @@ export default function CrmDashboard() {
   const { clients, properties, calendar, pollError, resetDemoData } = useCrmDemo();
 
   const [activeTab, setActiveTab] = useState<TabId>("clients");
+  const [detailClientId, setDetailClientId] = useState<string | null>(null);
 
   const calendarByDate = useMemo(() => groupCalendarByDate(calendar), [calendar]);
+
+  const detailClient = useMemo(
+    () => (detailClientId ? clients.find((c) => c.id === detailClientId) : undefined),
+    [clients, detailClientId]
+  );
+
+  const closeDetailPanel = useCallback(() => setDetailClientId(null), []);
 
   return (
     <div className="crm-dashboard" dir="rtl">
@@ -177,7 +364,11 @@ export default function CrmDashboard() {
                   </tr>
                 ) : (
                   clients.map((c) => (
-                    <tr key={c.id}>
+                    <tr
+                      key={c.id}
+                      className="crm-table-row-clickable"
+                      onClick={() => setDetailClientId(c.id)}
+                    >
                       <td>{c.name}</td>
                       <td>{c.phone ?? "—"}</td>
                       <td>
@@ -256,6 +447,15 @@ export default function CrmDashboard() {
           </div>
         ) : null}
       </main>
+
+      {detailClient ? (
+        <ClientDetailPanel
+          client={detailClient}
+          properties={properties}
+          calendar={calendar}
+          onClose={closeDetailPanel}
+        />
+      ) : null}
     </div>
   );
 }

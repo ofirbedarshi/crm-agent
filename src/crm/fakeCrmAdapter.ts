@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type {
+  ClientInteraction,
+  ClientInteractionPatch,
   CreateOrUpdateClientAction,
   CreateOrUpdatePropertyAction,
   CreateTaskAction
@@ -21,6 +23,8 @@ export interface FakeClient {
     features?: string[];
     flexible_entry?: string;
   };
+  /** Timeline of touches (newest appended by upsert batches). */
+  interactions?: ClientInteraction[];
 }
 
 export interface FakeTask {
@@ -71,6 +75,46 @@ function appendActivity(description: string): void {
   });
 }
 
+function normalizePropertyAddress(addr: string): string {
+  return addr.trim().replace(/\s+/g, " ");
+}
+
+function mergePropertyNote(prev: string | undefined, next: string | undefined): string | undefined {
+  const n = next?.trim();
+  const p = prev?.trim();
+  if (!n) {
+    return p;
+  }
+  if (!p) {
+    return n;
+  }
+  if (p.includes(n)) {
+    return p;
+  }
+  return `${p}\n${n}`;
+}
+
+function appendClientInteractionRecords(
+  existing: ClientInteraction[] | undefined,
+  patches: ClientInteractionPatch[] | undefined
+): ClientInteraction[] | undefined {
+  if (!patches?.length) {
+    return existing;
+  }
+  const base = existing ?? [];
+  const added: ClientInteraction[] = patches.map((p) => ({
+    id: randomUUID(),
+    recorded_at: formatActivityTime(),
+    summary: p.summary.trim(),
+    ...(p.property_address?.trim() ? { property_address: p.property_address.trim() } : {}),
+    ...(p.property_addresses && p.property_addresses.length > 0
+      ? { property_addresses: [...p.property_addresses] }
+      : {}),
+    ...(p.kind?.trim() ? { kind: p.kind.trim() } : {})
+  }));
+  return [...base, ...added];
+}
+
 function nextClientId(): string {
   const id = `client_${String(clientCounter).padStart(4, "0")}`;
   clientCounter += 1;
@@ -108,16 +152,21 @@ export interface ClientUpsertResult {
 
 export function createOrUpdateClient(data: CreateOrUpdateClientAction["data"]): ClientUpsertResult {
   const existing = clients.get(data.name);
+  const mergedInteractions = appendClientInteractionRecords(existing?.interactions, data.interactions);
   if (existing) {
     const updated: FakeClient = {
       ...existing,
       role: data.role ?? existing.role,
       lead_source: data.lead_source ?? existing.lead_source,
       lead_temperature: data.lead_temperature ?? existing.lead_temperature,
-      preferences: mergeClientPreferences(existing.preferences, data.preferences)
+      preferences: mergeClientPreferences(existing.preferences, data.preferences),
+      ...(mergedInteractions !== undefined ? { interactions: mergedInteractions } : {})
     };
     clients.set(data.name, updated);
     appendActivity(`עודכן לקוח: ${data.name}`);
+    if (data.interactions?.length) {
+      appendActivity(`נוסף תיעוד מגע ללקוח ${data.name}`);
+    }
     return { client: updated, operation: "updated" };
   }
 
@@ -127,10 +176,14 @@ export function createOrUpdateClient(data: CreateOrUpdateClientAction["data"]): 
     ...(data.role ? { role: data.role } : {}),
     ...(data.lead_source ? { lead_source: data.lead_source } : {}),
     ...(data.lead_temperature ? { lead_temperature: data.lead_temperature } : {}),
-    ...(data.preferences ? { preferences: data.preferences } : {})
+    ...(data.preferences ? { preferences: data.preferences } : {}),
+    ...(mergedInteractions !== undefined ? { interactions: mergedInteractions } : {})
   };
   clients.set(data.name, created);
   appendActivity(`נוצר לקוח חדש: ${data.name}`);
+  if (data.interactions?.length) {
+    appendActivity(`נוסף תיעוד מגע ללקוח ${data.name}`);
+  }
   return { client: created, operation: "created" };
 }
 
@@ -149,6 +202,27 @@ export function createTask(data: CreateTaskAction["data"]): FakeTask {
 }
 
 export function createOrUpdateProperty(data: CreateOrUpdatePropertyAction["data"]): FakeProperty {
+  const addrNorm = normalizePropertyAddress(data.address);
+  const existingIdx = properties.findIndex((p) => normalizePropertyAddress(p.address) === addrNorm);
+
+  if (existingIdx >= 0) {
+    const prev = properties[existingIdx]!;
+    const merged: FakeProperty = {
+      ...prev,
+      ...(data.city?.trim() ? { city: data.city.trim() } : {}),
+      ...(data.rooms !== undefined ? { rooms: data.rooms } : {}),
+      ...(data.features && data.features.length > 0 ? { features: [...data.features] } : {}),
+      ...(data.asking_price !== undefined ? { asking_price: data.asking_price } : {}),
+      price_note: mergePropertyNote(prev.price_note, data.price_note),
+      general_notes: mergePropertyNote(prev.general_notes, data.general_notes),
+      ...(data.owner_client_name?.trim() ? { owner_client_name: data.owner_client_name.trim() } : {})
+    };
+    properties[existingIdx] = merged;
+    const ownerPart = data.owner_client_name ? ` · בעלים: ${data.owner_client_name}` : "";
+    appendActivity(`עודכן נכס: ${data.address.trim()}${ownerPart}`);
+    return merged;
+  }
+
   const prop: FakeProperty = {
     id: nextPropertyId(),
     address: data.address.trim(),

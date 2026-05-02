@@ -1,4 +1,5 @@
 import type {
+  ClientInteractionPatch,
   ClientPreferences,
   CreateOrUpdateClientAction,
   CreateOrUpdatePropertyAction,
@@ -92,6 +93,37 @@ function preferencesSuggestBuyerSearch(prefs: ClientPreferences | undefined): bo
   return hasLocation || looksLikeSearchIntent;
 }
 
+function normalizeInteractionPatches(value: unknown): ClientInteractionPatch[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const out: ClientInteractionPatch[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      continue;
+    }
+    const rec = item as Record<string, unknown>;
+    const summary =
+      asNonEmptyString(rec.summary) ?? asNonEmptyString(rec.description) ?? asNonEmptyString(rec.note);
+    if (!summary) {
+      continue;
+    }
+    const property_address = asNonEmptyString(rec.property_address) ?? asNonEmptyString(rec.property);
+    const kind =
+      asNonEmptyString(rec.kind) ??
+      asNonEmptyString(rec.type) ??
+      asNonEmptyString(rec.interaction_type);
+    const extraProps = asStringArray(rec.property_addresses);
+    out.push({
+      summary,
+      ...(property_address ? { property_address } : {}),
+      ...(extraProps ? { property_addresses: extraProps } : {}),
+      ...(kind ? { kind } : {})
+    });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 function normalizeClientAction(action: SupportedAction): CreateOrUpdateClientAction | null {
   if (action.type !== "create_or_update_client") {
     return null;
@@ -114,6 +146,7 @@ function normalizeClientAction(action: SupportedAction): CreateOrUpdateClientAct
   }
   const leadSource = asNonEmptyString(action.data.lead_source);
   const leadTemperature = normalizeLeadTemperature(action.data.lead_temperature);
+  const interactions = normalizeInteractionPatches(action.data.interactions);
 
   return {
     type: "create_or_update_client",
@@ -122,7 +155,8 @@ function normalizeClientAction(action: SupportedAction): CreateOrUpdateClientAct
       ...(role ? { role } : {}),
       ...(leadSource ? { lead_source: leadSource } : {}),
       ...(leadTemperature ? { lead_temperature: leadTemperature } : {}),
-      ...(preferences ? { preferences } : {})
+      ...(preferences ? { preferences } : {}),
+      ...(interactions ? { interactions } : {})
     }
   };
 }
@@ -262,15 +296,6 @@ export function validateParseResult(result: ParseMessageResult): ValidationResul
         rejectedActions.push({
           actionType: action.type,
           reason: "property address is required"
-        });
-      } else if (!normalized.data.owner_client_name?.trim()) {
-        missingInfo.add("property_owner_client_name");
-        clarifications.add(
-          "למי שייך הנכס? צריך שם לקוח מלא זהה לכרטיס הלקוח כדי לקשר את הנכס לישות לפני שמירה."
-        );
-        rejectedActions.push({
-          actionType: action.type,
-          reason: "property owner_client_name is required"
         });
       } else {
         validActions.push(normalized);

@@ -6,6 +6,7 @@ import type {
   CrmDemoState,
   DemoCalendarEntry,
   DemoClient,
+  DemoClientInteraction,
   DemoProperty
 } from "./types";
 
@@ -31,6 +32,44 @@ function isClientStatus(x: unknown): x is ClientStatus {
 
 function isCalendarKind(x: unknown): x is CalendarEntryKind {
   return x === "פגישה" || x === "שיחה" || x === "משימה";
+}
+
+function parseStringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const list = value.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+  return list.length > 0 ? list : undefined;
+}
+
+function parseInteraction(value: unknown): DemoClientInteraction | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const id = asString(value.id);
+  const summary = asString(value.summary);
+  const recordedAt = asString(value.recordedAt) ?? asString(value.recorded_at);
+  if (!id || !summary || !recordedAt) {
+    return null;
+  }
+  const kind = asString(value.kind);
+  const propertyAddresses =
+    parseStringList(value.propertyAddresses) ??
+    parseStringList(value.property_addresses) ??
+    (() => {
+      const legacy = asString(value.propertyAddress) ?? asString(value.property_address);
+      return legacy ? [legacy] : undefined;
+    })();
+  const relatedTaskIds =
+    parseStringList(value.relatedTaskIds) ?? parseStringList(value.related_task_ids);
+  return {
+    id,
+    summary,
+    recordedAt,
+    ...(kind ? { kind } : {}),
+    ...(propertyAddresses ? { propertyAddresses } : {}),
+    ...(relatedTaskIds ? { relatedTaskIds } : {})
+  };
 }
 
 function parsePreferences(value: unknown): ClientPreferences {
@@ -91,6 +130,9 @@ function parseClient(value: unknown): DemoClient | null {
     leadTemperatureRaw === "לא ידוע"
       ? leadTemperatureRaw
       : undefined;
+  const interactions = Array.isArray(value.interactions)
+    ? value.interactions.map(parseInteraction).filter((x): x is DemoClientInteraction => x !== null)
+    : [];
   return {
     id,
     name,
@@ -100,7 +142,8 @@ function parseClient(value: unknown): DemoClient | null {
     ...(leadSource ? { leadSource } : {}),
     ...(leadTemperature ? { leadTemperature } : {}),
     preferences: parsePreferences(value.preferences),
-    ...(notes ? { notes } : {})
+    ...(notes ? { notes } : {}),
+    ...(interactions.length > 0 ? { interactions } : {})
   };
 }
 

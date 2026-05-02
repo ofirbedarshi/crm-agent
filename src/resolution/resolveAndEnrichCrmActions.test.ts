@@ -199,4 +199,28 @@ describe("resolveAndEnrichCrmActions", () => {
     expect(result.validActions).toHaveLength(0);
     expect(result.clarifications.some((q) => q.includes("לא ברור על מי מתכוונים"))).toBe(true);
   });
+
+  it("infers property owner_client_name when omitted but batch has exactly one owner client", () => {
+    const result = resolveAndEnrichCrmActions(
+      [
+        {
+          type: "create_or_update_client",
+          data: { name: "מיכל כהן", role: "owner", preferences: { budget: 2_850_000 } }
+        },
+        {
+          type: "create_or_update_property",
+          data: { address: "ביאליק 23", city: "רמת גן", asking_price: 2_850_000 }
+        }
+      ],
+      [],
+      "דיברתי עם מיכל כהן מרחוב ביאליק 23 ברמת גן"
+    );
+
+    const prop = result.validActions.find((a) => a.type === "create_or_update_property");
+    expect(prop?.type).toBe("create_or_update_property");
+    if (prop?.type === "create_or_update_property") {
+      expect(prop.data.owner_client_name).toBe("מיכל כהן");
+    }
+    expect(result.clarifications).toHaveLength(0);
+  });
 });

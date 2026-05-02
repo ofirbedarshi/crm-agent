@@ -145,6 +145,17 @@ function formatClientSentence(
 
   const sentences: string[] = [verb];
 
+  if (action.data.interactions && action.data.interactions.length > 0) {
+    sentences.push(
+      `תיעוד מגע (${action.data.interactions.length}): ${action.data.interactions
+        .map((i) => {
+          const tag = i.kind?.trim() ? `[${i.kind.trim()}] ` : "";
+          return `${tag}${i.summary}`;
+        })
+        .join(" · ")}`
+    );
+  }
+
   if (patchBits.length > 0 && operation === "updated") {
     sentences.push(`עדכון הפעם: ${patchBits.join("; ")}`);
   }

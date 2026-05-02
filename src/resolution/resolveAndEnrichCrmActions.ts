@@ -1,6 +1,7 @@
-import type { FakeClient } from "../crm/fakeCrmAdapter";
+import type { FakeClient, FakeProperty } from "../crm/fakeCrmAdapter";
 import { mergeClientPreferences } from "../crm/mergeClientPreferences";
 import type { SupportedAction } from "../types/parser";
+import { consolidateListingPatchesFromInteractionAddresses } from "./propertyListingConsolidation";
 
 export interface ResolveAndEnrichResult {
   validActions: SupportedAction[];
@@ -111,7 +112,9 @@ export function resolveAndEnrichCrmActions(
   /** Persisted CRM clients only (SSOT), before applying this batch — used for strict matching once data exists. */
   persistedClients: FakeClient[],
   /** Latest user message (not including history) — used to catch under-specified names the model guessed. */
-  rawUserMessage = ""
+  rawUserMessage = "",
+  /** Persisted listings (SSOT) — used in the property-linkage phase after person resolution. */
+  persistedProperties: FakeProperty[] = []
 ): ResolveAndEnrichResult {
   const out: SupportedAction[] = [];
   const clarifications: string[] = [];
@@ -179,15 +182,15 @@ export function resolveAndEnrichCrmActions(
     }
 
     if (action.type === "create_or_update_property") {
-      const rawOwner = action.data.owner_client_name?.trim();
+      let rawOwner = action.data.owner_client_name?.trim();
       if (!rawOwner) {
-        clarifications.push(
-          "חסר שיוך בעלים לנכס — צריך שם לקוח מלא זהה לכרטיס הלקוח לפני קישור הנכס."
-        );
-        rejectedActions.push({
-          actionType: action.type,
-          reason: "property owner_client_name missing after validation"
-        });
+        const ownersOnly = overlay.filter((c) => c.role === "owner");
+        if (ownersOnly.length === 1) {
+          rawOwner = normalizeWhitespace(ownersOnly[0]!.name);
+        }
+      }
+      if (!rawOwner) {
+        out.push(action);
         continue;
       }
 
@@ -311,8 +314,13 @@ export function resolveAndEnrichCrmActions(
     });
   }
 
+  const afterPropertyLinkage = consolidateListingPatchesFromInteractionAddresses(
+    out,
+    persistedProperties
+  );
+
   return {
-    validActions: out,
+    validActions: afterPropertyLinkage,
     clarifications,
     rejectedActions
   };

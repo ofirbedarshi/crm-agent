@@ -59,6 +59,54 @@ describe("demoCrmStore", () => {
     expect(getDemoCrmState().calendar[0]?.title).toBe("לחזור");
   });
 
+  it("merges interactions when updating an existing demo client", () => {
+    recordPipelineClientUpsert({ name: "נועה", role: "buyer" }, "c-1", "created");
+    recordPipelineClientUpsert(
+      {
+        name: "נועה",
+        interactions: [{ summary: "שיחת מעקב קצרה", property_address: "ביאליק 5" }]
+      },
+      "c-1",
+      "updated"
+    );
+    const c = getDemoCrmState().clients[0];
+    expect(c?.interactions).toHaveLength(1);
+    expect(c?.interactions?.[0]?.summary).toBe("שיחת מעקב קצרה");
+    expect(c?.interactions?.[0]?.propertyAddresses).toEqual(["ביאליק 5"]);
+  });
+
+  it("links a pipeline task id to the matching client's latest interaction", () => {
+    recordPipelineClientUpsert(
+      {
+        name: "טל",
+        role: "buyer",
+        interactions: [{ summary: "פגישה קצרה", kind: "פגישה", property_address: "רוטשילד 1" }]
+      },
+      "c-1",
+      "created"
+    );
+    recordPipelineTask({ title: "לשלוח הצעה", client_name: "טל", due_time: "מחר" }, "t-99");
+    const ix = getDemoCrmState().clients[0]?.interactions?.[0];
+    expect(ix?.relatedTaskIds).toEqual(["t-99"]);
+  });
+
+  it("updates existing demo property notes instead of duplicating by address", () => {
+    recordPipelineProperty({ address: "הירדן 12", owner_client_name: "דני", general_notes: "קיים" }, "p-1");
+    recordPipelineProperty(
+      {
+        address: "הירדן 12",
+        owner_client_name: "דני",
+        price_note: "משוב אחרי ביקור"
+      },
+      "p-2"
+    );
+    expect(getDemoCrmState().properties).toHaveLength(1);
+    const prop = getDemoCrmState().properties[0];
+    expect(prop?.priceNote).toContain("משוב אחרי ביקור");
+    expect(prop?.generalNotes).toContain("קיים");
+    expect(prop?.id).toBe("p-2");
+  });
+
   it("records property with optional owner", () => {
     recordPipelineProperty(
       {

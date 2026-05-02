@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ClientPreferences as ParserPreferences } from "../types/parser";
+import type { ClientInteractionPatch, ClientPreferences as ParserPreferences } from "../types/parser";
 import type {
   CreateOrUpdateClientAction,
   CreateOrUpdatePropertyAction,
@@ -20,6 +20,17 @@ export interface DemoStorePreferences {
   flexibleEntry?: string;
 }
 
+export interface DemoStoreInteraction {
+  id: string;
+  summary: string;
+  kind?: string;
+  /** All listing address tokens tied to this touch (primary + extras). */
+  propertyAddresses?: string[];
+  recordedAt: string;
+  /** Task rows from the same pipeline batch, linked after `recordPipelineTask`. */
+  relatedTaskIds?: string[];
+}
+
 export interface DemoStoreClient {
   id: string;
   name: string;
@@ -30,6 +41,7 @@ export interface DemoStoreClient {
   leadTemperature?: "חם" | "חמים" | "קר" | "לא ידוע";
   preferences: DemoStorePreferences;
   notes?: string;
+  interactions?: DemoStoreInteraction[];
 }
 
 export interface DemoStoreProperty {
@@ -95,6 +107,68 @@ function leadTemperatureToDemo(
   return undefined;
 }
 
+function formatDemoInteractionTime(): string {
+  return new Date().toLocaleString("he-IL", {
+    dateStyle: "short",
+    timeStyle: "short"
+  });
+}
+
+function combinedInteractionAddresses(patch: ClientInteractionPatch): string[] {
+  const raw = [
+    patch.property_address?.trim(),
+    ...(patch.property_addresses ?? []).map((x) => x.trim()).filter(Boolean)
+  ].filter(Boolean) as string[];
+  return [...new Set(raw)];
+}
+
+function appendDemoInteractions(
+  prev: DemoStoreInteraction[] | undefined,
+  patches: ClientInteractionPatch[] | undefined
+): DemoStoreInteraction[] | undefined {
+  if (!patches?.length) {
+    return prev;
+  }
+  const base = prev ?? [];
+  const added = patches.map((p) => {
+    const props = combinedInteractionAddresses(p);
+    return {
+      id: randomUUID(),
+      summary: p.summary.trim(),
+      recordedAt: formatDemoInteractionTime(),
+      ...(p.kind?.trim() ? { kind: p.kind.trim() } : {}),
+      ...(props.length > 0 ? { propertyAddresses: props } : {})
+    };
+  });
+  return [...base, ...added];
+}
+
+function normalizeDemoName(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+/** Link calendar task id to the most recent interaction on that client (same execute batch). */
+function attachTaskIdToLatestInteraction(clientName: string, taskId: string): void {
+  const key = normalizeDemoName(clientName);
+  if (!key) {
+    return;
+  }
+  const idx = clients.findIndex((c) => normalizeDemoName(c.name) === key);
+  if (idx < 0) {
+    return;
+  }
+  const row = clients[idx]!;
+  const ix = row.interactions;
+  if (!ix?.length) {
+    return;
+  }
+  const lastPos = ix.length - 1;
+  const last = ix[lastPos]!;
+  const relatedTaskIds = [...(last.relatedTaskIds ?? []), taskId];
+  const nextIx = [...ix.slice(0, lastPos), { ...last, relatedTaskIds }];
+  clients[idx] = { ...row, interactions: nextIx };
+}
+
 function normalizeDemoPreferences(p?: ParserPreferences): DemoStorePreferences {
   if (!p) {
     return {};
@@ -115,6 +189,7 @@ export function getDemoCrmState(): DemoCrmSnapshot {
   return {
     clients: clients.map((c) => ({
       ...c,
+      ...(c.interactions ? { interactions: c.interactions.map((i) => ({ ...i })) } : {}),
       preferences: {
         ...c.preferences,
         ...(c.preferences.features ? { features: [...c.preferences.features] } : {})
@@ -143,6 +218,7 @@ export function recordPipelineClientUpsert(
 
   if (idx >= 0) {
     const prev = clients[idx]!;
+    const mergedInteractions = appendDemoInteractions(prev.interactions, data.interactions);
     clients[idx] = {
       ...prev,
       id: entityId,
@@ -150,11 +226,13 @@ export function recordPipelineClientUpsert(
       leadSource: data.lead_source ?? prev.leadSource,
       leadTemperature: leadTemperatureToDemo(data.lead_temperature) ?? prev.leadTemperature,
       preferences: { ...prev.preferences, ...preferences },
-      status: prev.status === "חדש" ? "בטיפול" : prev.status
+      status: prev.status === "חדש" ? "בטיפול" : prev.status,
+      ...(mergedInteractions !== undefined ? { interactions: mergedInteractions } : {})
     };
     return;
   }
 
+  const mergedInteractions = appendDemoInteractions(undefined, data.interactions);
   clients.push({
     id: entityId,
     name: data.name,
@@ -163,20 +241,40 @@ export function recordPipelineClientUpsert(
     leadSource: data.lead_source,
     leadTemperature: leadTemperatureToDemo(data.lead_temperature),
     preferences,
-    notes: undefined
+    notes: undefined,
+    ...(mergedInteractions !== undefined ? { interactions: mergedInteractions } : {})
   });
 }
 
 /** Called after fake CRM executes create_task → appears as יומן entry */
 export function recordPipelineTask(data: CreateTaskAction["data"], entityId: string): void {
+  const id = entityId || randomUUID();
   calendar.unshift({
-    id: entityId || randomUUID(),
+    id,
     title: data.title,
     clientName: data.client_name ?? "",
     date: data.due_time?.trim() ? data.due_time.trim() : "ללא תאריך יעד",
     kind: "משימה",
     description: undefined
   });
+  const cn = data.client_name?.trim();
+  if (cn) {
+    attachTaskIdToLatestInteraction(cn, id);
+  }
+}
+
+function mergeDemoPropertyRollup(prevRollup: string | undefined, nextParts: string[]): string | undefined {
+  const joined = nextParts.filter(Boolean).join(" · ");
+  if (!joined) {
+    return prevRollup;
+  }
+  if (!prevRollup?.trim()) {
+    return joined;
+  }
+  if (prevRollup.includes(joined)) {
+    return prevRollup;
+  }
+  return `${prevRollup} · ${joined}`;
 }
 
 /** Called after fake CRM executes create_or_update_property */
@@ -186,22 +284,51 @@ export function recordPipelineProperty(data: CreateOrUpdatePropertyAction["data"
   const price = data.asking_price ?? 0;
   const ownerClientName = data.owner_client_name?.trim() ?? "";
 
-  const rollupNotes: string[] = [];
+  const rollupParts: string[] = [];
   if (data.price_note) {
-    rollupNotes.push(`מחיר: ${data.price_note}`);
+    rollupParts.push(`מחיר: ${data.price_note}`);
   }
   if (data.general_notes) {
-    rollupNotes.push(data.general_notes);
+    rollupParts.push(data.general_notes);
+  }
+
+  const addrTrim = data.address.trim();
+  const existingIdx = properties.findIndex((p) => p.address.trim() === addrTrim);
+
+  if (existingIdx >= 0) {
+    const prev = properties[existingIdx]!;
+    const mergedRollup = mergeDemoPropertyRollup(prev.notes, rollupParts);
+    properties[existingIdx] = {
+      ...prev,
+      id: entityId,
+      ...(data.city?.trim() ? { city: data.city.trim() } : {}),
+      ...(data.rooms !== undefined ? { rooms: data.rooms } : {}),
+      ...(data.asking_price !== undefined ? { price: data.asking_price } : {}),
+      ...(ownerClientName ? { ownerClientName } : {}),
+      ...(mergedRollup ? { notes: mergedRollup } : {}),
+      ...(data.price_note
+        ? { priceNote: prev.priceNote ? `${prev.priceNote} · ${data.price_note}` : data.price_note }
+        : {}),
+      ...(data.general_notes
+        ? {
+            generalNotes: prev.generalNotes
+              ? `${prev.generalNotes}\n${data.general_notes}`
+              : data.general_notes
+          }
+        : {}),
+      ...(data.features && data.features.length > 0 ? { features: [...data.features] } : {})
+    };
+    return;
   }
 
   properties.unshift({
     id: entityId,
-    address: data.address.trim(),
+    address: addrTrim,
     city,
     rooms,
     price,
-    ownerClientName,
-    ...(rollupNotes.length > 0 ? { notes: rollupNotes.join(" · ") } : {}),
+    ...(ownerClientName ? { ownerClientName } : {}),
+    ...(rollupParts.length > 0 ? { notes: rollupParts.join(" · ") } : {}),
     ...(data.price_note ? { priceNote: data.price_note } : {}),
     ...(data.general_notes ? { generalNotes: data.general_notes } : {}),
     ...(data.features && data.features.length > 0 ? { features: [...data.features] } : {})

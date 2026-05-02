@@ -1,0 +1,18 @@
+---
+description: Mandatory CRM agent resolution pipeline — identity then property linkage then execution
+alwaysApply: true
+---
+
+# CRM pipeline (this repo)
+
+When changing `runCrmAgent`, validation, or CRM resolution behavior, preserve this **order**:
+
+1. **Parse** — LLM → candidate actions (structured JSON).
+2. **Validate** — required fields, allowed action types (`validateParseResult`).
+3. **Identity resolution** — resolve people (`create_or_update_client`, task `client_name`, property `owner_client_name`) vs persisted clients; clarify on ambiguity (`resolveAndEnrichCrmActions`).
+4. **Property linkage** — match structured listing hints from actions against persisted properties (CRM SSOT); consolidate listing merges when appropriate (`propertyListingConsolidation.ts`, invoked from `resolveAndEnrichCrmActions`).
+5. **Execute** — client → property → task ordering.
+
+Do **not** bolt one-off enrichment after resolve inside `runCrmAgent`; add logic under `src/resolution/` as an explicit phase. Deterministic logic must use **parser-structured fields + CRM snapshot**, not regex on raw user text for pipeline branching.
+
+See `CLAUDE.md` § CRM pipeline for the canonical wording.

@@ -135,7 +135,7 @@ describe("validateParseResult", () => {
     });
   });
 
-  it("rejects property actions without owner_client_name", () => {
+  it("accepts property actions without owner_client_name when address is present", () => {
     const result = validateParseResult({
       actions: [
         {
@@ -151,11 +151,42 @@ describe("validateParseResult", () => {
       clarification_questions: []
     });
 
-    expect(result.validActions).toEqual([]);
-    expect(result.rejectedActions).toContainEqual({
-      actionType: "create_or_update_property",
-      reason: "property owner_client_name is required"
+    expect(result.rejectedActions).toEqual([]);
+    expect(result.validActions).toHaveLength(1);
+    expect(result.validActions[0]).toMatchObject({
+      type: "create_or_update_property",
+      data: { address: "ביאליק 23", city: "רמת גן", asking_price: 2_850_000 }
     });
+  });
+
+  it("normalizes client interaction patches", () => {
+    const result = validateParseResult({
+      actions: [
+        {
+          type: "create_or_update_client",
+          data: {
+            name: "איתי",
+            interactions: [
+              { summary: "ביקור בדירה — חיובי", property_address: "הירדן 12", type: "פגישה" },
+              { description: "Fallback summary field" },
+              { summary: "" }
+            ]
+          }
+        }
+      ],
+      missing_info: [],
+      clarification_questions: []
+    });
+
+    expect(result.validActions).toHaveLength(1);
+    const client = result.validActions[0];
+    expect(client?.type).toBe("create_or_update_client");
+    if (client?.type === "create_or_update_client") {
+      expect(client.data.interactions).toEqual([
+        { summary: "ביקור בדירה — חיובי", property_address: "הירדן 12", kind: "פגישה" },
+        { summary: "Fallback summary field" }
+      ]);
+    }
   });
 
   it("rejects property actions that lack address", () => {

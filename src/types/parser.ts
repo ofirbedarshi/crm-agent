@@ -10,6 +10,24 @@ export interface ClientPreferences {
   flexible_entry?: string;
 }
 
+/** Free-text CRM touchpoint appended to the client timeline (visit, call, WhatsApp, etc.). */
+export interface ClientInteractionPatch {
+  summary: string;
+  /** Primary listing for linkage / property merge (same as before). */
+  property_address?: string;
+  /** Extra listing addresses tied to the same touch (e.g. second property discussed in a call). */
+  property_addresses?: string[];
+  /** סוג המגע — e.g. פגישה, שיחה, הודעה (Hebrew labels or short English tokens). */
+  kind?: string;
+}
+
+export interface ClientInteraction extends ClientInteractionPatch {
+  id: string;
+  recorded_at: string;
+  /** Demo UI: task entity ids appended when a task for this client is recorded in the same pipeline batch. */
+  related_task_ids?: string[];
+}
+
 export interface CreateOrUpdateClientAction {
   type: "create_or_update_client";
   data: {
@@ -18,6 +36,8 @@ export interface CreateOrUpdateClientAction {
     lead_source?: string;
     lead_temperature?: "hot" | "warm" | "cold" | "unknown";
     preferences?: ClientPreferences;
+    /** New interaction rows to append (e.g. post-visit summary). */
+    interactions?: ClientInteractionPatch[];
   };
 }
 

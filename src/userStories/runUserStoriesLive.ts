@@ -12,19 +12,27 @@ import { runCrmAgent } from "../pipeline/runCrmAgent";
 import {
   assertUs001PipelineLive,
   assertUs002PipelineLive,
+  assertUs003PipelineLive,
   type PipelineStoryContext
 } from "./assertUserStoryPipeline";
-import { US_001_BUYER_FROM_FACEBOOK, US_002_SELLER_LISTING_MEETING } from "./userStoryPrompts";
+import {
+  US_001_BUYER_FROM_FACEBOOK,
+  US_002_SELLER_LISTING_MEETING,
+  US_003_VISIT_JORDAN_12
+} from "./userStoryPrompts";
 
 interface StoryRun {
   id: string;
   prompt: string;
+  /** Run after reset — e.g. seed CRM so the real parser sees "### מצב CRM נוכחי". */
+  seed?: () => void;
   assert: (ctx: PipelineStoryContext) => void;
 }
 
 const STORIES: StoryRun[] = [
   { id: "US-001", prompt: US_001_BUYER_FROM_FACEBOOK, assert: assertUs001PipelineLive },
-  { id: "US-002", prompt: US_002_SELLER_LISTING_MEETING, assert: assertUs002PipelineLive }
+  { id: "US-002", prompt: US_002_SELLER_LISTING_MEETING, assert: assertUs002PipelineLive },
+  { id: "US-003", prompt: US_003_VISIT_JORDAN_12, assert: assertUs003PipelineLive }
 ];
 
 function printJson(label: string, value: unknown): void {
@@ -49,6 +57,7 @@ async function main(): Promise<void> {
 
     resetFakeCrm();
     resetDemoCrmStore();
+    story.seed?.();
 
     const started = Date.now();
     const result = await runCrmAgent({

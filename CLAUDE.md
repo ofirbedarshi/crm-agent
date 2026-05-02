@@ -37,3 +37,18 @@ Default process:
 - If unclear, ask.
 - If something is risky, stop and ask.
 - Do not assume missing requirements.
+
+## 6. CRM pipeline — mandatory resolution order
+
+Backend handling of a single user turn MUST follow this sequence (see `runCrmAgent` + `resolveAndEnrichCrmActions`):
+
+1. **Parse** — LLM outputs candidate `actions` / clarifications (intent + structured fields only).
+2. **Validate** — schema, required fields, task/property rules (`validateParseResult`).
+3. **Identity resolution** — match people references (client upserts, `client_name` on tasks, `owner_client_name` on properties) against persisted clients + batch overlay; block or clarify on ambiguity (`resolveAndEnrichCrmActions` loop).
+4. **Property linkage** — match structured listing references from actions (e.g. `interactions[].property_address`, existing `create_or_update_property`) against persisted properties (CRM SSOT); when interactions tie to exactly one known listing and no property action was emitted, append a consolidated `create_or_update_property` merge (`propertyListingConsolidation.ts`).
+5. **Execute** — run validated, resolved actions in linkage order (client → property → task).
+
+**Constraints:**
+
+- Deterministic stages use **structured parser output + CRM snapshot only**. Do not add regex/heuristic re-parsing of raw Hebrew for pipeline decisions (aligned with parser spec).
+- Prefer extending **`resolution/`** for new linkage behavior instead of ad hoc hooks after resolve in `runCrmAgent`.
