@@ -60,12 +60,15 @@ function clampTraceChatPair(d: { trace0: number; chat0: number }, dx: number, av
 }
 
 interface TripaneShellProps {
-  trace: ReactNode;
+  trace: ReactNode | null;
   chat: ReactNode;
   crm: ReactNode;
 }
 
 export default function TripaneShell({ trace, chat, crm }: TripaneShellProps) {
+  const tracePaneVisible = trace != null;
+  const tracePaneVisibleRef = useRef(tracePaneVisible);
+
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [{ tracePx, chatPx }, setSizes] = useState<Sizes>(loadStored);
 
@@ -77,6 +80,10 @@ export default function TripaneShell({ trace, chat, crm }: TripaneShellProps) {
   } | null>(null);
 
   useEffect(() => {
+    tracePaneVisibleRef.current = tracePaneVisible;
+  }, [tracePaneVisible]);
+
+  useEffect(() => {
     function onMove(e: PointerEvent) {
       const d = dragRef.current;
       const el = containerRef.current;
@@ -84,17 +91,27 @@ export default function TripaneShell({ trace, chat, crm }: TripaneShellProps) {
         return;
       }
       const rect = el.getBoundingClientRect();
-      const availPair = Math.max(MIN_TRACE + MIN_CHAT, rect.width - MIN_CRM - 2 * RESIZER_WIDTH - 8);
       const dx = e.clientX - d.startX;
 
-      if (d.kind === "trace-chat") {
-        setSizes(clampTraceChatPair({ trace0: d.trace0, chat0: d.chat0 }, dx, availPair));
+      if (tracePaneVisibleRef.current) {
+        const availPair = Math.max(MIN_TRACE + MIN_CHAT, rect.width - MIN_CRM - 2 * RESIZER_WIDTH - 8);
+
+        if (d.kind === "trace-chat") {
+          setSizes(clampTraceChatPair({ trace0: d.trace0, chat0: d.chat0 }, dx, availPair));
+          return;
+        }
+
+        setSizes((prev) => {
+          const maxChat = availPair - prev.tracePx;
+          const nextChat = Math.max(MIN_CHAT, Math.min(d.chat0 + dx, maxChat));
+          return { tracePx: prev.tracePx, chatPx: Math.round(nextChat) };
+        });
         return;
       }
 
+      const availChatOnly = Math.max(MIN_CHAT + MIN_CRM, rect.width - MIN_CRM - RESIZER_WIDTH - 8);
       setSizes((prev) => {
-        const maxChat = availPair - prev.tracePx;
-        const nextChat = Math.max(MIN_CHAT, Math.min(d.chat0 + dx, maxChat));
+        const nextChat = Math.max(MIN_CHAT, Math.min(d.chat0 + dx, availChatOnly));
         return { tracePx: prev.tracePx, chatPx: Math.round(nextChat) };
       });
     }
@@ -135,21 +152,25 @@ export default function TripaneShell({ trace, chat, crm }: TripaneShellProps) {
 
   return (
     <div ref={containerRef} className="app-triple-split" dir="ltr" lang="he">
-      <section
-        className="app-pane app-pane-trace"
-        style={{ width: tracePx, flex: "0 0 auto" }}
-        aria-label="System trace"
-      >
-        {trace}
-      </section>
+      {tracePaneVisible ? (
+        <>
+          <section
+            className="app-pane app-pane-trace"
+            style={{ width: tracePx, flex: "0 0 auto" }}
+            aria-label="System trace"
+          >
+            {trace}
+          </section>
 
-      <div
-        className="app-pane-resizer"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="שינוי רוחב בין מעקב מערכת לצ׳אט"
-        onPointerDown={(e) => startDrag("trace-chat", e)}
-      />
+          <div
+            className="app-pane-resizer"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="שינוי רוחב בין מעקב מערכת לצ׳אט"
+            onPointerDown={(e) => startDrag("trace-chat", e)}
+          />
+        </>
+      ) : null}
 
       <section
         className="app-pane app-pane-chat"
