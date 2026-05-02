@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { CreateOrUpdateClientAction, CreateTaskAction } from "../types/parser";
+import { mergeClientPreferences } from "./mergeClientPreferences";
 
 export interface FakeClient {
   id: string;
@@ -29,50 +30,6 @@ export interface FakeActivityEntry {
   id: string;
   description: string;
   time: string;
-}
-
-function mergePreferences(
-  existing: FakeClient["preferences"] | undefined,
-  patch: CreateOrUpdateClientAction["data"]["preferences"] | undefined
-): FakeClient["preferences"] | undefined {
-  if (!existing && !patch) {
-    return undefined;
-  }
-  if (!existing) {
-    return patch;
-  }
-  if (!patch) {
-    return existing;
-  }
-
-  const merged: NonNullable<FakeClient["preferences"]> = {
-    ...existing,
-    ...patch
-  };
-
-  if (patch.areas === undefined) {
-    merged.areas = existing.areas;
-  }
-  if (patch.features === undefined) {
-    merged.features = existing.features;
-  }
-  if (patch.city === undefined) {
-    merged.city = existing.city;
-  }
-  if (patch.property_type === undefined) {
-    merged.property_type = existing.property_type;
-  }
-  if (patch.budget === undefined) {
-    merged.budget = existing.budget;
-  }
-  if (patch.entry_date === undefined) {
-    merged.entry_date = existing.entry_date;
-  }
-  if (patch.flexible_entry === undefined) {
-    merged.flexible_entry = existing.flexible_entry;
-  }
-
-  return merged;
 }
 
 const clients = new Map<string, FakeClient>();
@@ -131,7 +88,7 @@ export function createOrUpdateClient(data: CreateOrUpdateClientAction["data"]): 
       role: data.role ?? existing.role,
       lead_source: data.lead_source ?? existing.lead_source,
       lead_temperature: data.lead_temperature ?? existing.lead_temperature,
-      preferences: mergePreferences(existing.preferences, data.preferences)
+      preferences: mergeClientPreferences(existing.preferences, data.preferences)
     };
     clients.set(data.name, updated);
     appendActivity(`עודכן לקוח: ${data.name}`);

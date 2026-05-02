@@ -41,6 +41,7 @@ export interface CrmPipelineTrace {
   timing: {
     parseMs?: number;
     validateMs?: number;
+    resolveMs?: number;
     executeMs?: number;
     responseMs?: number;
     totalMs?: number;

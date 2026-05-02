@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runCrmAgent } from "./runCrmAgent";
 import { getDemoCrmState, resetDemoCrmStore } from "../crm/demoCrmStore";
 import { getFakeCrmState, resetFakeCrm } from "../crm/fakeCrmAdapter";
+import { executeActions } from "../orchestrator/executeActions";
 
 vi.mock("../parser/parseMessage", () => {
   return {
@@ -109,6 +110,98 @@ describe("runCrmAgent", () => {
     expect(state.tasks).toHaveLength(0);
     expect(result.response).toContain("מה השם המלא של הלקוח");
     expect(result.trace.response?.replyType).toBe("clarification");
+  });
+
+  it("blocks client update when user said only דניאל but the model chose דניאל לוי", async () => {
+    executeActions([
+      {
+        type: "create_or_update_client",
+        data: { name: "דניאל לוי", role: "buyer", preferences: { areas: ["רמת גן"] } }
+      },
+      { type: "create_or_update_client", data: { name: "דניאל כהן", role: "buyer" } }
+    ]);
+
+    parseMessageMock.mockResolvedValue({
+      actions: [
+        {
+          type: "create_or_update_client",
+          data: {
+            name: "דניאל לוי",
+            preferences: { areas: ["רמת גן", "גבעתיים", "תל אביב"] }
+          }
+        }
+      ],
+      missing_info: [],
+      clarification_questions: []
+    });
+
+    const result = await runCrmAgent({
+      rawMessage: "דניאל מעוניין גם להתגורר בתל אביב",
+      pipelineInput: "דניאל מעוניין גם להתגורר בתל אביב",
+      historyCount: 0
+    });
+
+    expect(result.validActions).toHaveLength(0);
+    expect(result.response).toMatch(/לא ברור על מי מתכוונים/);
+    expect(getFakeCrmState().clients.find((c) => c.name === "דניאל לוי")?.preferences?.areas).toEqual(["רמת גן"]);
+  });
+
+  it("ambiguous shared first name blocks task execution until clarified", async () => {
+    executeActions([
+      { type: "create_or_update_client", data: { name: "דניאל לוי", role: "buyer" } },
+      { type: "create_or_update_client", data: { name: "דניאל כהן", role: "buyer" } }
+    ]);
+
+    parseMessageMock.mockResolvedValue({
+      actions: [
+        {
+          type: "create_task",
+          data: {
+            title: "פגישה עם דניאל לגבי הצעה",
+            client_name: "דניאל",
+            due_time: "מחר ב-8 בבוקר"
+          }
+        }
+      ],
+      missing_info: [],
+      clarification_questions: []
+    });
+
+    const result = await runCrmAgent({ rawMessage: "input", pipelineInput: "input", historyCount: 0 });
+
+    expect(getFakeCrmState().tasks).toHaveLength(0);
+    expect(result.validActions).toHaveLength(0);
+    expect(result.response).toMatch(/לא ברור על איזה לקוח/);
+    expect(result.trace.response?.replyType).toBe("clarification");
+  });
+
+  it("resolves task client_name to canonical full name when unique", async () => {
+    executeActions([
+      { type: "create_or_update_client", data: { name: "דניאל לוי", role: "buyer" } },
+      { type: "create_or_update_client", data: { name: "דניאל כהן", role: "buyer" } }
+    ]);
+
+    parseMessageMock.mockResolvedValue({
+      actions: [
+        {
+          type: "create_task",
+          data: {
+            title: "פגישה לגבי הצעה",
+            client_name: "דניאל לוי",
+            due_time: "מחר ב-8 בבוקר"
+          }
+        }
+      ],
+      missing_info: [],
+      clarification_questions: []
+    });
+
+    const result = await runCrmAgent({ rawMessage: "input", pipelineInput: "input", historyCount: 0 });
+
+    expect(result.validActions).toHaveLength(1);
+    expect(getFakeCrmState().tasks).toHaveLength(1);
+    expect(getFakeCrmState().tasks[0]?.client_name).toBe("דניאל לוי");
+    expect(result.executionResults).toHaveLength(1);
   });
 
   it("runs client upsert even when a follow-up task needs due_time clarification", async () => {

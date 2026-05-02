@@ -1,7 +1,10 @@
+import { formatCrmSnapshotForPrompt } from "../crm/crmSnapshotForPrompt";
+import { getFakeCrmState } from "../crm/fakeCrmAdapter";
 import { parseMessage } from "../parser/parseMessage";
 import { executeActions, type ActionExecutionResult } from "../orchestrator/executeActions";
 import { composeUserReply } from "../response/composeUserReply";
-import { validateParseResult } from "../validation/validateParseResult";
+import { resolveAndEnrichCrmActions } from "../resolution/resolveAndEnrichCrmActions";
+import { validateParseResult, type ValidationResult } from "../validation/validateParseResult";
 import type { ParseMessageResult, SupportedAction } from "../types/parser";
 import type { CrmPipelineTrace } from "./trace";
 
@@ -30,11 +33,17 @@ export async function runCrmAgent(input: RunCrmAgentInput): Promise<RunCrmAgentR
     timing: {}
   };
 
+  const snapshotText = formatCrmSnapshotForPrompt(getFakeCrmState());
+  const augmentedPipelineInput =
+    snapshotText.trim().length > 0
+      ? `${input.pipelineInput}\n\n### מצב CRM נוכחי (מקור אמת)\n${snapshotText}`
+      : input.pipelineInput;
+
   const parseStartedAt = Date.now();
-  const parsed = await parseMessage(input.pipelineInput, {
+  const parsed = await parseMessage(augmentedPipelineInput, {
     debug: true,
     traceInput: {
-      userPrompt: input.pipelineInput
+      userPrompt: augmentedPipelineInput
     }
   });
   trace.timing.parseMs = Date.now() - parseStartedAt;
@@ -42,8 +51,26 @@ export async function runCrmAgent(input: RunCrmAgentInput): Promise<RunCrmAgentR
   trace.llm = parsed._debug?.llm;
 
   const validateStartedAt = Date.now();
-  const validation = validateParseResult(parsed);
+  const validationRaw = validateParseResult(parsed);
   trace.timing.validateMs = Date.now() - validateStartedAt;
+
+  const resolveStartedAt = Date.now();
+  const resolution = resolveAndEnrichCrmActions(
+    validationRaw.validActions,
+    getFakeCrmState().clients,
+    input.rawMessage
+  );
+  trace.timing.resolveMs = Date.now() - resolveStartedAt;
+
+  const validation: ValidationResult = {
+    ...validationRaw,
+    validActions: resolution.validActions,
+    clarification_questions: Array.from(
+      new Set([...validationRaw.clarification_questions, ...resolution.clarifications])
+    ),
+    rejectedActions: [...validationRaw.rejectedActions, ...resolution.rejectedActions]
+  };
+
   trace.validation = {
     validActions: validation.validActions,
     rejectedActions: validation.rejectedActions,
