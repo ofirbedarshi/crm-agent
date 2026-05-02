@@ -1,12 +1,14 @@
-import type { FakeClient, FakeTask } from "./fakeCrmAdapter";
+import type { FakeClient, FakeProperty, FakeTask } from "./fakeCrmAdapter";
 
 const MAX_CLIENT_ROWS = 80;
 const MAX_TASK_ROWS = 80;
+const MAX_PROPERTY_ROWS = 40;
 
 /** Bounded CRM snapshot for parser grounding — SSOT is backend in-memory CRM only. */
 export function formatCrmSnapshotForPrompt(state: {
   clients: FakeClient[];
   tasks: FakeTask[];
+  properties?: FakeProperty[];
 }): string {
   const lines: string[] = [];
 
@@ -44,6 +46,31 @@ export function formatCrmSnapshotForPrompt(state: {
     }
     if (t.due_time) {
       parts.push(`מתי: ${t.due_time}`);
+    }
+    lines.push(`- ${parts.join(" · ")}`);
+  }
+
+  const props = (state.properties ?? []).slice(0, MAX_PROPERTY_ROWS);
+  lines.push("");
+  lines.push(
+    `נכסים (${(state.properties ?? []).length}${(state.properties ?? []).length > MAX_PROPERTY_ROWS ? `, מוצגים ${MAX_PROPERTY_ROWS}` : ""}):`
+  );
+  if (props.length === 0) {
+    lines.push("(אין נכסים במערכת)");
+  }
+  for (const p of props) {
+    const parts = [`כתובת: «${p.address}»`, `מזהה: ${p.id}`];
+    if (p.city) {
+      parts.push(`עיר: ${p.city}`);
+    }
+    if (p.rooms !== undefined) {
+      parts.push(`חדרים: ${p.rooms}`);
+    }
+    if (p.asking_price !== undefined) {
+      parts.push(`מחיר מבוקש: ${p.asking_price}`);
+    }
+    if (p.owner_client_name) {
+      parts.push(`בעלים (שם לקוח): «${p.owner_client_name}»`);
     }
     lines.push(`- ${parts.join(" · ")}`);
   }

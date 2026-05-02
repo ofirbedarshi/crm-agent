@@ -66,6 +66,7 @@ Inside `parseMessage`, the parser pipeline is explicit and fully logged:
 4. `decideOutput(rawModelJson, intent, validation)`
 
 Notes:
+- `detectIntent` uses fixed priority when several supported actions appear in one reply: **client → property → task** (person entity first, then asset, then todo). LLM action array order does not change that label.
 - The LLM output (`rawModelJson`) is the only interpretation source after the model call.
 - Original input text is not re-parsed by parser pipeline steps.
 - Optional debug mode adds `_debug: { intent, entities, validation }` to parser output.

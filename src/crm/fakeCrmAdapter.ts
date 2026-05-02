@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { CreateOrUpdateClientAction, CreateTaskAction } from "../types/parser";
+import type {
+  CreateOrUpdateClientAction,
+  CreateOrUpdatePropertyAction,
+  CreateTaskAction
+} from "../types/parser";
 import { mergeClientPreferences } from "./mergeClientPreferences";
 
 export interface FakeClient {
@@ -26,6 +30,18 @@ export interface FakeTask {
   client_name?: string;
 }
 
+export interface FakeProperty {
+  id: string;
+  address: string;
+  city?: string;
+  rooms?: number;
+  features?: string[];
+  asking_price?: number;
+  price_note?: string;
+  general_notes?: string;
+  owner_client_name?: string;
+}
+
 export interface FakeActivityEntry {
   id: string;
   description: string;
@@ -34,9 +50,11 @@ export interface FakeActivityEntry {
 
 const clients = new Map<string, FakeClient>();
 const tasks: FakeTask[] = [];
+const properties: FakeProperty[] = [];
 const activityLog: FakeActivityEntry[] = [];
 let clientCounter = 1;
 let taskCounter = 1;
+let propertyCounter = 1;
 
 function formatActivityTime(): string {
   return new Date().toLocaleString("he-IL", {
@@ -65,12 +83,20 @@ function nextTaskId(): string {
   return id;
 }
 
+function nextPropertyId(): string {
+  const id = `property_${String(propertyCounter).padStart(4, "0")}`;
+  propertyCounter += 1;
+  return id;
+}
+
 export function resetFakeCrm(): void {
   clients.clear();
   tasks.length = 0;
+  properties.length = 0;
   activityLog.length = 0;
   clientCounter = 1;
   taskCounter = 1;
+  propertyCounter = 1;
 }
 
 export type ClientUpsertOperation = "created" | "updated";
@@ -122,14 +148,34 @@ export function createTask(data: CreateTaskAction["data"]): FakeTask {
   return task;
 }
 
+export function createOrUpdateProperty(data: CreateOrUpdatePropertyAction["data"]): FakeProperty {
+  const prop: FakeProperty = {
+    id: nextPropertyId(),
+    address: data.address.trim(),
+    ...(data.city ? { city: data.city.trim() } : {}),
+    ...(data.rooms !== undefined ? { rooms: data.rooms } : {}),
+    ...(data.features && data.features.length > 0 ? { features: [...data.features] } : {}),
+    ...(data.asking_price !== undefined ? { asking_price: data.asking_price } : {}),
+    ...(data.price_note ? { price_note: data.price_note } : {}),
+    ...(data.general_notes ? { general_notes: data.general_notes } : {}),
+    ...(data.owner_client_name ? { owner_client_name: data.owner_client_name.trim() } : {})
+  };
+  properties.push(prop);
+  const ownerPart = data.owner_client_name ? ` · בעלים: ${data.owner_client_name}` : "";
+  appendActivity(`נוצר נכס: ${data.address}${ownerPart}`);
+  return prop;
+}
+
 export function getFakeCrmState(): {
   clients: FakeClient[];
   tasks: FakeTask[];
+  properties: FakeProperty[];
   activityLog: FakeActivityEntry[];
 } {
   return {
     clients: Array.from(clients.values()),
     tasks: [...tasks],
+    properties: properties.map((p) => ({ ...p, ...(p.features ? { features: [...p.features] } : {}) })),
     activityLog: [...activityLog]
   };
 }

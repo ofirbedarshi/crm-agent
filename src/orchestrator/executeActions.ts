@@ -1,5 +1,14 @@
-import { createOrUpdateClient, createTask, type FakeClient } from "../crm/fakeCrmAdapter";
-import { recordPipelineClientUpsert, recordPipelineTask } from "../crm/demoCrmStore";
+import {
+  createOrUpdateClient,
+  createOrUpdateProperty,
+  createTask,
+  type FakeClient
+} from "../crm/fakeCrmAdapter";
+import {
+  recordPipelineClientUpsert,
+  recordPipelineProperty,
+  recordPipelineTask
+} from "../crm/demoCrmStore";
 import type { SupportedAction } from "../types/parser";
 
 export interface ActionExecutionResult {
@@ -23,6 +32,16 @@ export function executeActions(actions: SupportedAction[]): ActionExecutionResul
         entityId: client.id,
         clientOperation: operation,
         clientSnapshot: client
+      };
+    }
+
+    if (action.type === "create_or_update_property") {
+      const prop = createOrUpdateProperty(action.data);
+      recordPipelineProperty(action.data, prop.id);
+      return {
+        actionType: action.type,
+        success: true,
+        entityId: prop.id
       };
     }
 

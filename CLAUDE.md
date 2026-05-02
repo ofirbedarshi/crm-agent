@@ -9,13 +9,15 @@
 
 ## 2. Development Workflow
 
-Always follow this process:
+Default process:
 
 1. Understand the task.
-2. Propose a plan.
-3. Wait for approval.
+2. For non-trivial or ambiguous work, propose a short plan.
+3. Wait for explicit approval before large or risky changes (new product behavior touching schemas or contracts, multi-file refactors, anything that could surprise in production).
 4. Implement in small steps.
 5. Explain what was done.
+
+**Straight-to-implement:** Small, clearly scoped follow-ups that finish already-approved work (for example fixing tests or typings after an agreed behavior change), single-file fixes with obvious intent, or documentation that only clarifies existing decisions — summarize intent briefly and implement without waiting for a separate approval round.
 
 ## 3. Coding Principles
 

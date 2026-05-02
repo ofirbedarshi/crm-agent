@@ -72,4 +72,26 @@ describe("formatExecutedReply", () => {
     expect(text).toContain("יצרתי משימה");
     expect(text).toContain("לשלוח הצעות");
   });
+
+  it("formats property cards with address and notes", () => {
+    const text = formatExecutedReply(
+      [
+        {
+          type: "create_or_update_property",
+          data: {
+            address: "ביאליק 23",
+            city: "רמת גן",
+            rooms: 3.5,
+            asking_price: 2_850_000,
+            price_note: "לבדוק מחיר שוק",
+            owner_client_name: "מיכל כהן"
+          }
+        }
+      ],
+      [{ actionType: "create_or_update_property", success: true, entityId: "p1" }]
+    );
+    expect(text).toMatch(/יצרתי כרטיס נכס עבור מיכל כהן בכתובת ביאליק 23/);
+    expect(text).not.toContain("בעלים:");
+    expect(text).toMatch(/מחיר שוק/);
+  });
 });

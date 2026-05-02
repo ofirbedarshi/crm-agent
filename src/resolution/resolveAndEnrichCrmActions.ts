@@ -124,7 +124,13 @@ export function resolveAndEnrichCrmActions(
     if (action.type === "create_task") {
       const rawClient = action.data.client_name?.trim();
       if (!rawClient) {
-        out.push(action);
+        clarifications.push(
+          "חסר שיוך לקוח למשימה — צריך שם מלא כדי לקשר משימה לישות במערכת."
+        );
+        rejectedActions.push({
+          actionType: action.type,
+          reason: "task client_name missing after validation"
+        });
         continue;
       }
 
@@ -168,6 +174,63 @@ export function resolveAndEnrichCrmActions(
       rejectedActions.push({
         actionType: action.type,
         reason: "ambiguous task client_name"
+      });
+      continue;
+    }
+
+    if (action.type === "create_or_update_property") {
+      const rawOwner = action.data.owner_client_name?.trim();
+      if (!rawOwner) {
+        clarifications.push(
+          "חסר שיוך בעלים לנכס — צריך שם לקוח מלא זהה לכרטיס הלקוח לפני קישור הנכס."
+        );
+        rejectedActions.push({
+          actionType: action.type,
+          reason: "property owner_client_name missing after validation"
+        });
+        continue;
+      }
+
+      const matches = findMatchingClients(rawOwner, overlay);
+      if (matches.length === 1) {
+        const canonical = matches[0]!.name;
+        const blocked = userReferenceBlocksSingleClientMatch(rawUserMessage, canonical, overlay);
+        if (blocked) {
+          clarifications.push(clarificationAmbiguous("task", blocked.word, blocked.candidates));
+          rejectedActions.push({
+            actionType: action.type,
+            reason: "ambiguous user reference for property owner_client_name"
+          });
+          continue;
+        }
+        out.push({
+          ...action,
+          data: {
+            ...action.data,
+            owner_client_name: canonical
+          }
+        });
+        continue;
+      }
+
+      if (matches.length === 0 && persistedClients.length === 0) {
+        out.push(action);
+        continue;
+      }
+
+      if (matches.length === 0) {
+        clarifications.push(clarificationMissingTaskClient(rawOwner));
+        rejectedActions.push({
+          actionType: action.type,
+          reason: "property owner_client_name does not resolve to any CRM client"
+        });
+        continue;
+      }
+
+      clarifications.push(clarificationAmbiguous("task", rawOwner, matches));
+      rejectedActions.push({
+        actionType: action.type,
+        reason: "ambiguous property owner_client_name"
       });
       continue;
     }

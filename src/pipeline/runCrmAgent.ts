@@ -22,6 +22,16 @@ interface RunCrmAgentInput {
   historyCount?: number;
 }
 
+/**
+ * Canonical CRM action order (matches `detectIntent` priority in `parseMessage`):
+ * client (person entity) → property (asset) → task (todo).
+ */
+function sortActionsForEntityLinkage(actions: SupportedAction[]): SupportedAction[] {
+  const rank = (t: SupportedAction["type"]) =>
+    t === "create_or_update_client" ? 0 : t === "create_or_update_property" ? 1 : 2;
+  return [...actions].sort((a, b) => rank(a.type) - rank(b.type));
+}
+
 export async function runCrmAgent(input: RunCrmAgentInput): Promise<RunCrmAgentResult> {
   const startedAt = Date.now();
   const trace: CrmPipelineTrace = {
@@ -40,18 +50,20 @@ export async function runCrmAgent(input: RunCrmAgentInput): Promise<RunCrmAgentR
       : input.pipelineInput;
 
   const parseStartedAt = Date.now();
-  const parsed = await parseMessage(augmentedPipelineInput, {
+  const parsedRaw = await parseMessage(augmentedPipelineInput, {
     debug: true,
     traceInput: {
       userPrompt: augmentedPipelineInput
     }
   });
+  const parsed = parsedRaw;
   trace.timing.parseMs = Date.now() - parseStartedAt;
   trace.parser = parsed;
-  trace.llm = parsed._debug?.llm;
+  trace.llm = parsedRaw._debug?.llm;
 
   const validateStartedAt = Date.now();
   const validationRaw = validateParseResult(parsed);
+  validationRaw.validActions = sortActionsForEntityLinkage(validationRaw.validActions);
   trace.timing.validateMs = Date.now() - validateStartedAt;
 
   const resolveStartedAt = Date.now();

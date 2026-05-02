@@ -30,6 +30,27 @@ function summarizeAction(action: SupportedAction): string {
 
     return lines.join("\n");
   }
+
+  if (action.type === "create_or_update_property") {
+    const lines: string[] = [
+      `* create_or_update_property (${action.data.address})`,
+      `  📍 כתובת: ${action.data.address}`
+    ];
+    if (action.data.city) {
+      lines.push(`  עיר: ${action.data.city}`);
+    }
+    if (action.data.rooms !== undefined) {
+      lines.push(`  חדרים: ${action.data.rooms}`);
+    }
+    if (action.data.asking_price !== undefined) {
+      lines.push(`  מחיר מבוקש: ${action.data.asking_price.toLocaleString("he-IL")} ₪`);
+    }
+    if (action.data.owner_client_name) {
+      lines.push(`  בעלים: ${action.data.owner_client_name}`);
+    }
+    return lines.join("\n");
+  }
+
   return `* create_task (${action.data.title})`;
 }
 
@@ -69,7 +90,11 @@ async function main(): Promise<void> {
       }
 
       try {
-        const result = await runCrmAgent(userInput);
+        const result = await runCrmAgent({
+          rawMessage: userInput,
+          pipelineInput: userInput,
+          historyCount: 0
+        });
         console.log("\n🤖 Response:");
         console.log(result.response);
         console.log("\n📊 Actions:");

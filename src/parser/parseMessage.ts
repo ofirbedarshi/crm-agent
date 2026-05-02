@@ -4,8 +4,12 @@ import type { ParseMessageResult, SupportedAction, SupportedActionType } from ".
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const DEFAULT_MODEL = "gpt-4o-mini";
 
-const SUPPORTED_ACTION_TYPES: SupportedActionType[] = ["create_or_update_client", "create_task"];
-type PipelineIntent = "create_client" | "create_task" | "unknown";
+const SUPPORTED_ACTION_TYPES: SupportedActionType[] = [
+  "create_or_update_client",
+  "create_task",
+  "create_or_update_property"
+];
+type PipelineIntent = "create_client" | "create_task" | "create_property" | "unknown";
 
 interface IntentResult {
   intent: PipelineIntent;
@@ -173,6 +177,43 @@ function normalizeTaskAction(data: Record<string, unknown>): SupportedAction | n
   };
 }
 
+function propertyAddressFromData(data: Record<string, unknown>): string | undefined {
+  return (
+    asNonEmptyString(data.address) ??
+    asNonEmptyString(data.full_address) ??
+    asNonEmptyString(data.property_address)
+  );
+}
+
+function normalizePropertyAction(data: Record<string, unknown>): SupportedAction | null {
+  const address = propertyAddressFromData(data);
+  if (!address) {
+    return null;
+  }
+
+  const city = asNonEmptyString(data.city);
+  const rooms = asNumber(data.rooms);
+  const features = asStringArray(data.features);
+  const askingPrice = asNumber(data.asking_price);
+  const priceNote = asNonEmptyString(data.price_note);
+  const generalNotes = asNonEmptyString(data.general_notes);
+  const ownerClientName = asNonEmptyString(data.owner_client_name);
+
+  return {
+    type: "create_or_update_property",
+    data: {
+      address,
+      ...(city ? { city } : {}),
+      ...(rooms !== undefined ? { rooms } : {}),
+      ...(features ? { features } : {}),
+      ...(askingPrice !== undefined ? { asking_price: askingPrice } : {}),
+      ...(priceNote ? { price_note: priceNote } : {}),
+      ...(generalNotes ? { general_notes: generalNotes } : {}),
+      ...(ownerClientName ? { owner_client_name: ownerClientName } : {})
+    }
+  };
+}
+
 function normalizeAction(action: unknown): { action: SupportedAction | null; clarification?: string } {
   if (!isRecord(action)) {
     return { action: null };
@@ -195,6 +236,18 @@ function normalizeAction(action: unknown): { action: SupportedAction | null; cla
       return {
         action: null,
         clarification: "מה השם המלא של הלקוח כדי שאוכל ליצור או לעדכן את כרטיס הלקוח?"
+      };
+    }
+    return { action: normalized };
+  }
+
+  if (type === "create_or_update_property") {
+    const normalized = normalizePropertyAction(data);
+    if (!normalized) {
+      return {
+        action: null,
+        clarification:
+          "מהי הכתובת המלאה של הנכס (רחוב ומספר ועיר) כדי שאוכל לפתוח כרטיס נכס?"
       };
     }
     return { action: normalized };
@@ -228,23 +281,43 @@ function findFirstActionData(
   return null;
 }
 
+/**
+ * Dominant pipeline intent when several supported actions appear in one model reply.
+ * Priority matches CRM semantics and `sortActionsForEntityLinkage` in `runCrmAgent`:
+ * person entity (client) → physical asset (property) → todo (task).
+ * Order inside `rawModelJson.actions` does not matter.
+ */
 function detectIntent(rawModelJson: unknown): IntentResult {
   if (!isRecord(rawModelJson) || !Array.isArray(rawModelJson.actions)) {
     return { intent: "unknown" };
   }
 
+  let hasClient = false;
+  let hasProperty = false;
+  let hasTask = false;
+
   for (const action of rawModelJson.actions) {
     if (!isRecord(action)) {
       continue;
     }
-
-    if (action.type === "create_or_update_client") {
-      return { intent: "create_client" };
+    const t = action.type;
+    if (t === "create_or_update_client") {
+      hasClient = true;
+    } else if (t === "create_or_update_property") {
+      hasProperty = true;
+    } else if (t === "create_task") {
+      hasTask = true;
     }
+  }
 
-    if (action.type === "create_task") {
-      return { intent: "create_task" };
-    }
+  if (hasClient) {
+    return { intent: "create_client" };
+  }
+  if (hasProperty) {
+    return { intent: "create_property" };
+  }
+  if (hasTask) {
+    return { intent: "create_task" };
   }
 
   return { intent: "unknown" };
@@ -299,17 +372,55 @@ function extractEntities(rawModelJson: unknown): ExtractedEntities {
   };
 }
 
-function validateRequiredFields(intent: IntentResult, entities: ExtractedEntities): ValidationResult {
-  const missingFields: string[] = [];
-
-  if (intent.intent === "create_client" && !entities.name) {
-    missingFields.push("name");
+/** Validates every action in the raw model output (supports mixed batches). */
+function collectMissingFieldsFromRawActions(rawModelJson: unknown): string[] {
+  const missing: string[] = [];
+  if (!isRecord(rawModelJson) || !Array.isArray(rawModelJson.actions)) {
+    return missing;
   }
 
-  if (intent.intent === "create_task" && !entities.title) {
-    missingFields.push("title");
+  for (const action of rawModelJson.actions) {
+    if (!isRecord(action) || typeof action.type !== "string" || !isRecord(action.data)) {
+      continue;
+    }
+    const data = action.data;
+    if (action.type === "create_or_update_client") {
+      const name = asNonEmptyString(data.name) ?? asNonEmptyString(data.full_name);
+      if (!name) {
+        missing.push("name");
+      }
+    }
+    if (action.type === "create_task") {
+      const title =
+        asNonEmptyString(data.title) ??
+        asNonEmptyString(data.description) ??
+        asNonEmptyString(data.task) ??
+        asNonEmptyString(data.task_description);
+      if (!title) {
+        missing.push("title");
+      }
+      const clientRef =
+        asNonEmptyString(data.client_name) ?? asNonEmptyString(data.name);
+      if (!clientRef) {
+        missing.push("task_client_name");
+      }
+    }
+    if (action.type === "create_or_update_property") {
+      const addr = propertyAddressFromData(data);
+      if (!addr) {
+        missing.push("property_address");
+      }
+      if (!asNonEmptyString(data.owner_client_name)) {
+        missing.push("property_owner_client_name");
+      }
+    }
   }
 
+  return Array.from(new Set(missing));
+}
+
+function validateRequiredFields(rawModelJson: unknown): ValidationResult {
+  const missingFields = collectMissingFieldsFromRawActions(rawModelJson);
   return {
     isValid: missingFields.length === 0,
     missingFields
@@ -322,6 +433,15 @@ function clarificationForMissingField(missingField: string): string {
   }
   if (missingField === "title") {
     return "מה בדיוק צריך לבצע כדי שאוכל ליצור את המשימה שביקשת?";
+  }
+  if (missingField === "property_address") {
+    return "מהי הכתובת המלאה של הנכס (רחוב ומספר ועיר) כדי שאוכל לפתוח כרטיס נכס?";
+  }
+  if (missingField === "task_client_name") {
+    return "על איזה לקוח מדובר למשימה? צריך שם מלא כדי לשייך את המשימה לישות במערכת.";
+  }
+  if (missingField === "property_owner_client_name") {
+    return "למי שייך הנכס? צריך שם לקוח מלא זהה לכרטיס הלקוח כדי לקשר את הנכס לישות.";
   }
   return "מה חסר בהודעה כדי שאוכל לבצע את הפעולה שביקשת?";
 }
@@ -370,7 +490,17 @@ function decideOutput(
 ): ParseMessageResult {
   const result = normalizeParseResult(rawModelJson);
 
-  if (intent.intent === "unknown") {
+  const rawHasSupportedAction =
+    isRecord(rawModelJson) &&
+    Array.isArray(rawModelJson.actions) &&
+    rawModelJson.actions.some(
+      (a) =>
+        isRecord(a) &&
+        typeof a.type === "string" &&
+        SUPPORTED_ACTION_TYPES.includes(a.type as SupportedActionType)
+    );
+
+  if (intent.intent === "unknown" && !rawHasSupportedAction) {
     if (result.clarification_questions.length === 0) {
       result.clarification_questions.push("מה חסר בהודעה כדי שאוכל לבצע את הפעולה שביקשת?");
     }
@@ -449,7 +579,7 @@ export async function parseMessage(
   const entities = extractEntities(rawModelJson);
   console.log("STEP 2 - Entities:", entities);
 
-  const validation = validateRequiredFields(intent, entities);
+  const validation = validateRequiredFields(rawModelJson);
   console.log("STEP 3 - Validation:", validation);
 
   const result = decideOutput(rawModelJson, intent, validation);

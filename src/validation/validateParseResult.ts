@@ -1,6 +1,7 @@
 import type {
   ClientPreferences,
   CreateOrUpdateClientAction,
+  CreateOrUpdatePropertyAction,
   CreateTaskAction,
   ParseMessageResult,
   SupportedAction
@@ -75,6 +76,22 @@ function normalizePreferences(value: unknown): ClientPreferences | undefined {
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
+/** When the model omits role but preferences look like an active purchase search, default to buyer. */
+function preferencesSuggestBuyerSearch(prefs: ClientPreferences | undefined): boolean {
+  if (!prefs) {
+    return false;
+  }
+  const hasBudget = prefs.budget !== undefined;
+  if (!hasBudget) {
+    return false;
+  }
+  const hasLocation = Boolean(prefs.areas?.length || prefs.city?.trim());
+  const pt = prefs.property_type ?? "";
+  const looksLikeSearchIntent =
+    /חדרים|חדר\s|דירת|דירה\s|penthouse|פנטהאוז|סוג\s+נכס/i.test(pt);
+  return hasLocation || looksLikeSearchIntent;
+}
+
 function normalizeClientAction(action: SupportedAction): CreateOrUpdateClientAction | null {
   if (action.type !== "create_or_update_client") {
     return null;
@@ -85,14 +102,19 @@ function normalizeClientAction(action: SupportedAction): CreateOrUpdateClientAct
     return null;
   }
 
-  const role =
+  let role =
     action.data.role === "buyer" || action.data.role === "owner" || action.data.role === "unknown"
       ? action.data.role
       : undefined;
+
+  const preferences = normalizePreferences(action.data.preferences);
+
+  if (!role && preferencesSuggestBuyerSearch(preferences)) {
+    role = "buyer";
+  }
   const leadSource = asNonEmptyString(action.data.lead_source);
   const leadTemperature = normalizeLeadTemperature(action.data.lead_temperature);
 
-  const preferences = normalizePreferences(action.data.preferences);
   return {
     type: "create_or_update_client",
     data: {
@@ -124,6 +146,48 @@ function normalizeTaskAction(action: SupportedAction): CreateTaskAction | null {
       title,
       ...(dueTime ? { due_time: dueTime } : {}),
       ...(clientName ? { client_name: clientName } : {})
+    }
+  };
+}
+
+function propertyAddressFrom(data: Record<string, unknown>): string | undefined {
+  return (
+    asNonEmptyString(data.address) ??
+    asNonEmptyString(data.full_address) ??
+    asNonEmptyString(data.property_address)
+  );
+}
+
+function normalizePropertyAction(action: SupportedAction): CreateOrUpdatePropertyAction | null {
+  if (action.type !== "create_or_update_property") {
+    return null;
+  }
+
+  const raw = action.data as Record<string, unknown>;
+  const address = propertyAddressFrom(raw);
+  if (!address) {
+    return null;
+  }
+
+  const city = asNonEmptyString(raw.city);
+  const rooms = asNumber(raw.rooms);
+  const features = asStringArray(raw.features);
+  const askingPrice = asNumber(raw.asking_price);
+  const priceNote = asNonEmptyString(raw.price_note);
+  const generalNotes = asNonEmptyString(raw.general_notes);
+  const ownerClientName = asNonEmptyString(raw.owner_client_name);
+
+  return {
+    type: "create_or_update_property",
+    data: {
+      address,
+      ...(city ? { city } : {}),
+      ...(rooms !== undefined ? { rooms } : {}),
+      ...(features ? { features } : {}),
+      ...(askingPrice !== undefined ? { asking_price: askingPrice } : {}),
+      ...(priceNote ? { price_note: priceNote } : {}),
+      ...(generalNotes ? { general_notes: generalNotes } : {}),
+      ...(ownerClientName ? { owner_client_name: ownerClientName } : {})
     }
   };
 }
@@ -164,6 +228,15 @@ export function validateParseResult(result: ParseMessageResult): ValidationResul
           actionType: action.type,
           reason: "task title is required"
         });
+      } else if (!normalized.data.client_name?.trim()) {
+        missingInfo.add("task_client_name");
+        clarifications.add(
+          "על איזה לקוח מדובר למשימה? צריך שם מלא כדי לשייך את המשימה לישות (כרטיס לקוח) במערכת."
+        );
+        rejectedActions.push({
+          actionType: action.type,
+          reason: "task client_name is required"
+        });
       } else if (!normalized.data.due_time && taskLikelyNeedsDueWindow(normalized.data.title)) {
         missingInfo.add("due_time");
         clarifications.add(
@@ -172,6 +245,32 @@ export function validateParseResult(result: ParseMessageResult): ValidationResul
         rejectedActions.push({
           actionType: action.type,
           reason: "due_time required for scheduled tasks"
+        });
+      } else {
+        validActions.push(normalized);
+      }
+      continue;
+    }
+
+    if (action.type === "create_or_update_property") {
+      const normalized = normalizePropertyAction(action);
+      if (!normalized) {
+        missingInfo.add("property_address");
+        clarifications.add(
+          "מהי הכתובת המלאה של הנכס (רחוב ומספר ועיר, כפי שציינת בשיחה) כדי שאוכל לפתוח כרטיס נכס?"
+        );
+        rejectedActions.push({
+          actionType: action.type,
+          reason: "property address is required"
+        });
+      } else if (!normalized.data.owner_client_name?.trim()) {
+        missingInfo.add("property_owner_client_name");
+        clarifications.add(
+          "למי שייך הנכס? צריך שם לקוח מלא זהה לכרטיס הלקוח כדי לקשר את הנכס לישות לפני שמירה."
+        );
+        rejectedActions.push({
+          actionType: action.type,
+          reason: "property owner_client_name is required"
         });
       } else {
         validActions.push(normalized);

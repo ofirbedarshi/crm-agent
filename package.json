@@ -9,6 +9,7 @@
     "test:e2e": "playwright test",
     "eval:parser": "tsx src/parser/evalParser.ts",
     "eval:llm": "tsx src/eval/runEvaluation.ts",
+    "eval:user-stories": "tsx src/userStories/runUserStoriesLive.ts",
     "demo": "tsx src/cli/demo.ts",
     "server:dev": "tsx watch server/server.ts",
     "client:dev": "npm run dev --prefix client"

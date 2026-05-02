@@ -1,6 +1,11 @@
 import { useMemo, useState } from "react";
 import { useCrmDemo } from "./CrmDemoContext";
-import type { CalendarEntryKind, ClientPreferences, DemoCalendarEntry } from "./types";
+import type {
+  CalendarEntryKind,
+  ClientPreferences,
+  DemoCalendarEntry,
+  DemoProperty
+} from "./types";
 
 type TabId = "clients" | "properties" | "calendar";
 
@@ -66,6 +71,27 @@ function groupCalendarByDate(entries: DemoCalendarEntry[]): [string, DemoCalenda
 
 function EmptyHint() {
   return <p className="crm-empty-hint">אין נתונים להצגה</p>;
+}
+
+function PropertyCard({ p }: { p: DemoProperty }) {
+  const hasGranularNotes = Boolean(p.priceNote || p.generalNotes);
+  return (
+    <>
+      <div className="crm-card-title">
+        {p.address}, {p.city}
+      </div>
+      <div className="crm-card-meta">
+        {p.rooms} חדרים · {formatPrice(p.price)}
+      </div>
+      {p.features && p.features.length > 0 ? (
+        <div className="crm-card-features">תכונות: {p.features.join(" · ")}</div>
+      ) : null}
+      <div className="crm-card-owner">בעל נכס: {p.ownerClientName}</div>
+      {p.priceNote ? <div className="crm-card-notes">מחיר: {p.priceNote}</div> : null}
+      {p.generalNotes ? <div className="crm-card-notes">הערות: {p.generalNotes}</div> : null}
+      {!hasGranularNotes && p.notes ? <div className="crm-card-notes">{p.notes}</div> : null}
+    </>
+  );
 }
 
 const RESET_CONFIRM =
@@ -182,14 +208,7 @@ export default function CrmDashboard() {
               ) : (
                 properties.map((p) => (
                   <li key={p.id} className="crm-card">
-                    <div className="crm-card-title">
-                      {p.address}, {p.city}
-                    </div>
-                    <div className="crm-card-meta">
-                      {p.rooms} חדרים · {formatPrice(p.price)}
-                    </div>
-                    <div className="crm-card-owner">בעל נכס: {p.ownerClientName}</div>
-                    {p.notes ? <div className="crm-card-notes">{p.notes}</div> : null}
+                    <PropertyCard p={p} />
                   </li>
                 ))
               )}

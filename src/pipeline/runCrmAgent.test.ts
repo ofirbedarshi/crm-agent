@@ -232,7 +232,7 @@ describe("runCrmAgent", () => {
     expect(result.trace.response?.replyType).toBe("actions");
   });
 
-  it("ambiguous task does not invent client_name", async () => {
+  it("task without client_name is rejected with clarification", async () => {
     parseMessageMock.mockResolvedValue({
       actions: [
         {
@@ -246,11 +246,13 @@ describe("runCrmAgent", () => {
       clarification_questions: []
     });
 
-    await runCrmAgent({ rawMessage: "input", pipelineInput: "input", historyCount: 0 });
+    const result = await runCrmAgent({ rawMessage: "input", pipelineInput: "input", historyCount: 0 });
     const state = getFakeCrmState();
 
-    expect(state.tasks).toHaveLength(1);
-    expect(state.tasks[0]?.client_name).toBeUndefined();
+    expect(state.tasks).toHaveLength(0);
+    expect(result.validActions).toHaveLength(0);
+    expect(result.response).toContain("איזה לקוח");
+    expect(result.trace.response?.replyType).toBe("clarification");
   });
 
   it("unsupported fields are removed during validation", async () => {
@@ -260,6 +262,7 @@ describe("runCrmAgent", () => {
           type: "create_task",
           data: {
             title: "לשלוח עדכון",
+            client_name: "דניאל",
             description: "שדה לא נתמך",
             task_description: "גם לא נתמך"
           } as never
@@ -275,7 +278,8 @@ describe("runCrmAgent", () => {
       {
         type: "create_task",
         data: {
-          title: "לשלוח עדכון"
+          title: "לשלוח עדכון",
+          client_name: "דניאל"
         }
       }
     ]);

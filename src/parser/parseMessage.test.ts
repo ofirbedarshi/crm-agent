@@ -44,7 +44,8 @@ describe("parseMessage", () => {
           type: "create_task",
           data: {
             title: "לקבוע שיחת פולואפ עם דניאל",
-            due_time: "מחר"
+            due_time: "מחר",
+            client_name: "דניאל לוי"
           }
         }
       ],
@@ -59,14 +60,20 @@ describe("parseMessage", () => {
       "create_task"
     ]);
     const clientAction = result.actions.find((a) => a.type === "create_or_update_client");
-    const taskAction = result.actions.find((a) => a.type === "create_task");
     expect(clientAction?.data.name).toBe("דניאל לוי");
     expect(clientAction?.data.preferences).toEqual({
       city: "גבעתיים",
       property_type: "דירת 4 חדרים",
       budget: 3200000
     });
-    expect(taskAction?.data.title).toBe("לקבוע שיחת פולואפ עם דניאל");
+    expect(result.actions.find((a) => a.type === "create_task")).toEqual({
+      type: "create_task",
+      data: {
+        title: "לקבוע שיחת פולואפ עם דניאל",
+        due_time: "מחר",
+        client_name: "דניאל לוי"
+      }
+    });
     expect(result.missing_info).toEqual([]);
     expect(result.clarification_questions).toEqual([]);
   });
@@ -110,7 +117,8 @@ describe("parseMessage", () => {
           type: "create_task",
           data: {
             title: "שליחת פרטי מימון ללקוח",
-            due_time: "בעוד יומיים"
+            due_time: "בעוד יומיים",
+            client_name: "לקוח מהביקור"
           }
         },
         {
@@ -127,8 +135,14 @@ describe("parseMessage", () => {
     const result = await parseMessage("היינו בביקור בדירה, תיצור לי פולואפ לגבי מימון");
 
     expect(result.actions).toHaveLength(1);
-    expect(result.actions[0]?.type).toBe("create_task");
-    expect(result.actions[0]?.data.title).toBe("שליחת פרטי מימון ללקוח");
+    expect(result.actions[0]).toEqual({
+      type: "create_task",
+      data: {
+        title: "שליחת פרטי מימון ללקוח",
+        due_time: "בעוד יומיים",
+        client_name: "לקוח מהביקור"
+      }
+    });
   });
 
   it("normalizes inconsistent task fields into title only", async () => {
@@ -148,12 +162,14 @@ describe("parseMessage", () => {
     });
 
     const result = await parseMessage("צריך לדבר עם דניאל מחר");
-    const taskAction = result.actions[0];
-    expect(taskAction?.type).toBe("create_task");
-    expect(taskAction?.data.title).toBe("צריך לדבר עם דניאל מחר");
-    expect(taskAction?.data).not.toHaveProperty("description");
-    expect(taskAction?.data).not.toHaveProperty("task");
-    expect(taskAction?.data).not.toHaveProperty("task_description");
+    expect(result.actions[0]).toEqual({
+      type: "create_task",
+      data: {
+        title: "צריך לדבר עם דניאל מחר",
+        due_time: "מחר",
+        client_name: "דניאל"
+      }
+    });
   });
 
   it("drops client action when required name is missing and adds clarification", async () => {
@@ -198,7 +214,8 @@ describe("parseMessage", () => {
         {
           type: "create_task",
           data: {
-            title: "לחזור ללקוח"
+            title: "לחזור ללקוח",
+            client_name: "דניאל כהן"
           }
         }
       ],
@@ -211,7 +228,8 @@ describe("parseMessage", () => {
     expect(result.actions).toHaveLength(1);
     expect(result._debug?.intent).toEqual({ intent: "create_task" });
     expect(result._debug?.entities).toEqual({
-      title: "לחזור ללקוח"
+      title: "לחזור ללקוח",
+      client_name: "דניאל כהן"
     });
     expect(result._debug?.validation).toEqual({
       isValid: true,
@@ -222,7 +240,8 @@ describe("parseMessage", () => {
         {
           type: "create_task",
           data: {
-            title: "לחזור ללקוח"
+            title: "לחזור ללקוח",
+            client_name: "דניאל כהן"
           }
         }
       ],
@@ -233,7 +252,60 @@ describe("parseMessage", () => {
     expect(result._debug?.llm.parseStatus).toBe("ok");
   });
 
-  it("keeps client_name optional for create_task validation", async () => {
+  it("intent prefers client over property when property appears first in JSON", async () => {
+    mockOpenAiJsonContent({
+      actions: [
+        {
+          type: "create_or_update_property",
+          data: {
+            address: "ביאליק 1",
+            city: "רמת גן",
+            owner_client_name: "מיכל כהן"
+          }
+        },
+        {
+          type: "create_or_update_client",
+          data: { name: "מיכל כהן", role: "owner" }
+        }
+      ],
+      missing_info: [],
+      clarification_questions: []
+    });
+
+    const result = await parseMessage("מיכל רוצה למכור את הדירה ברמת גן", { debug: true });
+
+    expect(result._debug?.intent).toEqual({ intent: "create_client" });
+  });
+
+  it("intent prefers property over task when task appears first in JSON", async () => {
+    mockOpenAiJsonContent({
+      actions: [
+        {
+          type: "create_task",
+          data: {
+            title: "פגישה בנכס",
+            client_name: "מיכל כהן"
+          }
+        },
+        {
+          type: "create_or_update_property",
+          data: {
+            address: "ביאליק 1",
+            city: "רמת גן",
+            owner_client_name: "מיכל כהן"
+          }
+        }
+      ],
+      missing_info: [],
+      clarification_questions: []
+    });
+
+    const result = await parseMessage("פגישה אצל מיכל בביאליק", { debug: true });
+
+    expect(result._debug?.intent).toEqual({ intent: "create_property" });
+  });
+
+  it("drops create_task without client_name — entity linkage required", async () => {
     mockOpenAiJsonContent({
       actions: [
         {
@@ -248,11 +320,8 @@ describe("parseMessage", () => {
     });
 
     const result = await parseMessage("שלח סיכום שיחה ללקוח");
-    const taskAction = result.actions[0];
-    expect(taskAction?.type).toBe("create_task");
-    expect(taskAction?.data.title).toBe("לשלוח סיכום שיחה");
-    expect(taskAction?.data.client_name).toBeUndefined();
-    expect(result.clarification_questions).toEqual([]);
+    expect(result.actions).toEqual([]);
+    expect(result.clarification_questions.some((q) => q.includes("לקוח"))).toBe(true);
   });
 
   it("adds title to missing_info when task title is missing", async () => {

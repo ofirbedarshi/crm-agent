@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { resetDemoCrmStore } from "../crm/demoCrmStore";
+import { getDemoCrmState, resetDemoCrmStore } from "../crm/demoCrmStore";
 import { getFakeCrmState, resetFakeCrm } from "../crm/fakeCrmAdapter";
 import { executeActions } from "./executeActions";
 
@@ -44,5 +44,27 @@ describe("executeActions", () => {
     ]);
     expect(results[0]?.clientOperation).toBeUndefined();
     expect(results[0]?.actionType).toBe("create_task");
+  });
+
+  it("creates property rows in fake CRM and demo snapshot", () => {
+    executeActions([
+      {
+        type: "create_or_update_property",
+        data: {
+          address: "ביאליק 23",
+          city: "רמת גן",
+          rooms: 3.5,
+          features: ["קומה 2", "ללא מעלית"],
+          asking_price: 2_850_000,
+          price_note: "לאמת מול שוק",
+          owner_client_name: "מיכל כהן"
+        }
+      }
+    ]);
+    const p = getFakeCrmState().properties[0];
+    expect(p?.address).toBe("ביאליק 23");
+    expect(p?.asking_price).toBe(2_850_000);
+    expect(getDemoCrmState().properties[0]?.address).toBe("ביאליק 23");
+    expect(getDemoCrmState().properties[0]?.priceNote).toBe("לאמת מול שוק");
   });
 });

@@ -110,14 +110,19 @@ function parseProperty(value: unknown): DemoProperty | null {
   }
   const id = asString(value.id);
   const address = asString(value.address);
-  const city = asString(value.city);
-  const rooms = asNumber(value.rooms);
-  const price = asNumber(value.price);
-  const ownerClientName = asString(value.ownerClientName);
-  if (!id || !address || !city || rooms === undefined || price === undefined || !ownerClientName) {
+  if (!id || !address) {
     return null;
   }
+  const city = asString(value.city) ?? "";
+  const rooms = asNumber(value.rooms) ?? 0;
+  const price = asNumber(value.price) ?? 0;
+  const ownerClientName = asString(value.ownerClientName) ?? "";
   const notes = asString(value.notes);
+  const priceNote = asString(value.priceNote);
+  const generalNotes = asString(value.generalNotes);
+  const features = Array.isArray(value.features)
+    ? value.features.filter((x): x is string => typeof x === "string")
+    : undefined;
   return {
     id,
     address,
@@ -125,7 +130,10 @@ function parseProperty(value: unknown): DemoProperty | null {
     rooms,
     price,
     ownerClientName,
-    ...(notes ? { notes } : {})
+    ...(notes ? { notes } : {}),
+    ...(priceNote ? { priceNote } : {}),
+    ...(generalNotes ? { generalNotes } : {}),
+    ...(features && features.length > 0 ? { features } : {})
   };
 }
 

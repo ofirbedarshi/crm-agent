@@ -551,6 +551,12 @@ body.app-pane-dragging {
   color: #334155;
 }
 
+.crm-card-features {
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.45;
+}
+
 .crm-card-notes {
   font-size: 13px;
   color: #64748b;

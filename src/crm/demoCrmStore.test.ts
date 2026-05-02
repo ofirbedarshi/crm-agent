@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { getDemoCrmState, recordPipelineClientUpsert, recordPipelineTask, resetDemoCrmStore } from "./demoCrmStore";
+import {
+  getDemoCrmState,
+  recordPipelineClientUpsert,
+  recordPipelineProperty,
+  recordPipelineTask,
+  resetDemoCrmStore
+} from "./demoCrmStore";
 
 describe("demoCrmStore", () => {
   beforeEach(() => {
@@ -51,5 +57,27 @@ describe("demoCrmStore", () => {
     expect(getDemoCrmState().calendar).toHaveLength(1);
     expect(getDemoCrmState().calendar[0]?.kind).toBe("משימה");
     expect(getDemoCrmState().calendar[0]?.title).toBe("לחזור");
+  });
+
+  it("records property with optional owner", () => {
+    recordPipelineProperty(
+      {
+        address: "ביאליק 23",
+        city: "רמת גן",
+        rooms: 3.5,
+        asking_price: 2_850_000,
+        price_note: "לבדוק שוק",
+        general_notes: "פתוחה לבלעדיות בהערכת שווי",
+        owner_client_name: "מיכל כהן",
+        features: ["חניה בטאבו", "קומה 2", "בלי מעלית"]
+      },
+      "p-1"
+    );
+    const prop = getDemoCrmState().properties[0];
+    expect(prop?.address).toBe("ביאליק 23");
+    expect(prop?.priceNote).toBe("לבדוק שוק");
+    expect(prop?.generalNotes).toContain("בלעדיות");
+    expect(prop?.ownerClientName).toBe("מיכל כהן");
+    expect(prop?.features).toEqual(["חניה בטאבו", "קומה 2", "בלי מעלית"]);
   });
 });

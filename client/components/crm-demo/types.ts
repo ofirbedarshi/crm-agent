@@ -34,9 +34,12 @@ export interface DemoProperty {
   city: string;
   rooms: number;
   price: number;
-  /** שם לקוח בעל הנכס */
+  /** שם לקוח בעל הנכס — ריק אם עדיין לא משויך */
   ownerClientName: string;
   notes?: string;
+  priceNote?: string;
+  generalNotes?: string;
+  features?: string[];
 }
 
 /** פריט יומן מאוחד — פגישות, שיחות ומשימות */

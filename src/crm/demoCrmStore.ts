@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { ClientPreferences as ParserPreferences } from "../types/parser";
-import type { CreateOrUpdateClientAction, CreateTaskAction } from "../types/parser";
+import type {
+  CreateOrUpdateClientAction,
+  CreateOrUpdatePropertyAction,
+  CreateTaskAction
+} from "../types/parser";
 
 /** Mirrors client `CrmDemoState` JSON shape (Hebrew enums). */
 export type DemoClientKind = "קונה" | "מוכר" | "שניהם";
@@ -36,6 +40,9 @@ export interface DemoStoreProperty {
   price: number;
   ownerClientName: string;
   notes?: string;
+  priceNote?: string;
+  generalNotes?: string;
+  features?: string[];
 }
 
 export type DemoCalendarKind = "פגישה" | "שיחה" | "משימה";
@@ -169,5 +176,34 @@ export function recordPipelineTask(data: CreateTaskAction["data"], entityId: str
     date: data.due_time?.trim() ? data.due_time.trim() : "ללא תאריך יעד",
     kind: "משימה",
     description: undefined
+  });
+}
+
+/** Called after fake CRM executes create_or_update_property */
+export function recordPipelineProperty(data: CreateOrUpdatePropertyAction["data"], entityId: string): void {
+  const city = data.city?.trim() ?? "";
+  const rooms = data.rooms ?? 0;
+  const price = data.asking_price ?? 0;
+  const ownerClientName = data.owner_client_name?.trim() ?? "";
+
+  const rollupNotes: string[] = [];
+  if (data.price_note) {
+    rollupNotes.push(`מחיר: ${data.price_note}`);
+  }
+  if (data.general_notes) {
+    rollupNotes.push(data.general_notes);
+  }
+
+  properties.unshift({
+    id: entityId,
+    address: data.address.trim(),
+    city,
+    rooms,
+    price,
+    ownerClientName,
+    ...(rollupNotes.length > 0 ? { notes: rollupNotes.join(" · ") } : {}),
+    ...(data.price_note ? { priceNote: data.price_note } : {}),
+    ...(data.general_notes ? { generalNotes: data.general_notes } : {}),
+    ...(data.features && data.features.length > 0 ? { features: [...data.features] } : {})
   });
 }
