@@ -112,7 +112,7 @@ describe("runCrmAgent", () => {
     expect(result.trace.response?.replyType).toBe("clarification");
   });
 
-  it("blocks client update when user said only דניאל but the model chose דניאל לוי", async () => {
+  it("allows client update with exact multi-word name match (no rawUserMessage guard)", async () => {
     executeActions([
       {
         type: "create_or_update_client",
@@ -136,14 +136,16 @@ describe("runCrmAgent", () => {
     });
 
     const result = await runCrmAgent({
-      rawMessage: "דניאל מעוניין גם להתגורר בתל אביב",
-      pipelineInput: "דניאל מעוניין גם להתגורר בתל אביב",
+      rawMessage: "דניאל לוי מעוניין גם בגבעתיים ותל אביב",
+      pipelineInput: "דניאל לוי מעוניין גם בגבעתיים ותל אביב",
       historyCount: 0
     });
 
-    expect(result.validActions).toHaveLength(0);
-    expect(result.response).toMatch(/לא ברור על מי מתכוונים/);
-    expect(getFakeCrmState().clients.find((c) => c.name === "דניאל לוי")?.preferences?.areas).toEqual(["רמת גן"]);
+    expect(result.validActions).toHaveLength(1);
+    expect(result.trace.validation?.clarificationQuestions).toHaveLength(0);
+    expect(
+      getFakeCrmState().clients.find((c) => c.name === "דניאל לוי")?.preferences?.areas
+    ).toEqual(["רמת גן", "גבעתיים", "תל אביב"]);
   });
 
   it("ambiguous shared first name blocks task execution until clarified", async () => {
@@ -171,7 +173,8 @@ describe("runCrmAgent", () => {
 
     expect(getFakeCrmState().tasks).toHaveLength(0);
     expect(result.validActions).toHaveLength(0);
-    expect(result.response).toMatch(/לא ברור על איזה לקוח/);
+    expect(result.response).toMatch(/יש כמה לקוחות בשם דניאל/);
+    expect(result.response).toMatch(/למי התכוונת/);
     expect(result.trace.response?.replyType).toBe("clarification");
   });
 
@@ -209,11 +212,11 @@ describe("runCrmAgent", () => {
       actions: [
         {
           type: "create_or_update_client",
-          data: { name: "דניאל", role: "buyer", preferences: { areas: ["רמת גן"] } }
+          data: { name: "דניאל לוי", role: "buyer", preferences: { areas: ["רמת גן"] } }
         },
         {
           type: "create_task",
-          data: { title: "להתקשר לדניאל", client_name: "דניאל" }
+          data: { title: "להתקשר לדניאל לוי", client_name: "דניאל לוי" }
         }
       ],
       missing_info: [],
@@ -256,13 +259,17 @@ describe("runCrmAgent", () => {
   });
 
   it("unsupported fields are removed during validation", async () => {
+    executeActions([
+      { type: "create_or_update_client", data: { name: "דניאל לוי", role: "buyer" } }
+    ]);
+
     parseMessageMock.mockResolvedValue({
       actions: [
         {
           type: "create_task",
           data: {
             title: "לשלוח עדכון",
-            client_name: "דניאל",
+            client_name: "דניאל לוי",
             description: "שדה לא נתמך",
             task_description: "גם לא נתמך"
           } as never
@@ -279,7 +286,7 @@ describe("runCrmAgent", () => {
         type: "create_task",
         data: {
           title: "לשלוח עדכון",
-          client_name: "דניאל"
+          client_name: "דניאל לוי"
         }
       }
     ]);

@@ -247,6 +247,13 @@ export function validateParseResult(result: ParseMessageResult): ValidationResul
           actionType: action.type,
           reason: "client name is required"
         });
+      } else if (normalized.data.name.trim().split(/\s+/).filter(Boolean).length < 2) {
+        missingInfo.add("client_last_name");
+        clarifications.add(`מה שם המשפחה של ${normalized.data.name.trim()}?`);
+        rejectedActions.push({
+          actionType: action.type,
+          reason: "client name must include first and last name"
+        });
       } else {
         validActions.push(normalized);
       }

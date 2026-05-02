@@ -71,7 +71,6 @@ export async function runCrmAgent(input: RunCrmAgentInput): Promise<RunCrmAgentR
   const resolution = resolveAndEnrichCrmActions(
     validationRaw.validActions,
     crmSnapshot.clients,
-    input.rawMessage,
     crmSnapshot.properties
   );
   trace.timing.resolveMs = Date.now() - resolveStartedAt;

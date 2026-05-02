@@ -1,6 +1,12 @@
 import type { DemoCrmSnapshot } from "../crm/demoCrmStore";
 import type { FakeActivityEntry, FakeClient, FakeProperty, FakeTask } from "../crm/fakeCrmAdapter";
 import type { RunCrmAgentResult } from "../pipeline/runCrmAgent";
+import type {
+  Us001LiveExpectation,
+  Us002LiveExpectation,
+  Us003LiveExpectation,
+  Us004LiveExpectation
+} from "./userStoryLiveExpectations";
 
 export type PipelineStoryContext = {
   result: RunCrmAgentResult;
@@ -67,55 +73,72 @@ export function assertUs001PipelineStrict(ctx: PipelineStoryContext): void {
   if (result.trace.response?.replyType !== "actions") fail(`US-001: replyType`);
 }
 
-/** Live LLM: same intent, tolerant Hebrew / field variance. */
-export function assertUs001PipelineLive(ctx: PipelineStoryContext): void {
+/** Live LLM: same intent, tolerant Hebrew / field variance — validated against `expected`. */
+export function assertUs001PipelineLive(ctx: PipelineStoryContext, expected: Us001LiveExpectation): void {
   const { result, fakeCrm: crm } = ctx;
+  const { pipeline, client: expClient, tasks: expTasks } = expected;
 
-  if (result.validActions.length < 3) {
+  if (result.validActions.length < pipeline.validActionsMin) {
     fail(
-      `US-001 live: expected at least 3 validActions (client + 2 tasks), got ${result.validActions.length}. Clarification? ${result.response.slice(0, 200)}`
+      `${expected.storyLabel}: expected at least ${pipeline.validActionsMin} validActions (client + tasks), got ${result.validActions.length}. Clarification? ${result.response.slice(0, 200)}`
     );
   }
 
   const types = result.validActions.map((a) => a.type);
   const clientCount = types.filter((t) => t === "create_or_update_client").length;
   const taskCount = types.filter((t) => t === "create_task").length;
-  if (clientCount !== 1) fail(`US-001 live: expected 1 create_or_update_client, got ${clientCount}`);
-  if (taskCount < 2) fail(`US-001 live: expected at least 2 create_task, got ${taskCount}`);
+  if (clientCount !== pipeline.createOrUpdateClientCount) {
+    fail(
+      `${expected.storyLabel}: expected ${pipeline.createOrUpdateClientCount} create_or_update_client, got ${clientCount}`
+    );
+  }
+  if (taskCount < pipeline.createTaskMin) {
+    fail(`${expected.storyLabel}: expected at least ${pipeline.createTaskMin} create_task, got ${taskCount}`);
+  }
 
-  const client = crm.clients.find((c) => c.name.includes("דניאל") && c.name.includes("לוי"));
-  if (!client) fail(`US-001 live: no client resembling דניאל לוי`);
+  const [partA, partB] = expClient.nameIncludesBoth;
+  const client = crm.clients.find((c) => c.name.includes(partA) && c.name.includes(partB));
+  if (!client) fail(`${expected.storyLabel}: no client resembling ${partA} + ${partB}`);
 
   // Model often omits role despite buyer intent; fake CRM leaves role unset unless emitted.
-  if (client.role !== undefined && client.role !== "buyer") {
-    fail(`US-001 live: expected buyer role (or omit), got ${client.role}`);
+  if (client.role !== undefined && client.role !== expClient.roleIfPresent) {
+    fail(`${expected.storyLabel}: expected ${expClient.roleIfPresent} role (or omit), got ${client.role}`);
   }
-  near(client.preferences?.budget ?? 0, 3_400_000, 150_000, "US-001 live: budget");
+  near(
+    client.preferences?.budget ?? 0,
+    expClient.budgetApprox,
+    expClient.budgetTolerance,
+    `${expected.storyLabel}: budget`
+  );
 
   const areas = client.preferences?.areas ?? [];
   const areaText = [client.preferences?.city, ...areas].filter(Boolean).join(" ");
-  if (!areaText.includes("גבעתיים")) fail(`US-001 live: expected גבעתיים in areas/city`);
-  if (!areaText.includes("רמת גן")) fail(`US-001 live: expected רמת גן in areas/city`);
+  for (const area of expClient.areasMustInclude) {
+    if (!areaText.includes(area)) fail(`${expected.storyLabel}: expected ${area} in areas/city`);
+  }
 
   const feats = (client.preferences?.features ?? []).join(" ");
   const allClient = JSON.stringify(client.preferences ?? {});
-  if (!allClient.includes("מעלית") && !feats.includes("מעלית")) {
-    fail(`US-001 live: expected מעלית in preferences`);
+  for (const hint of expClient.preferenceHintsMustAppearInJsonOrFeatures) {
+    if (!allClient.includes(hint) && !feats.includes(hint)) {
+      fail(`${expected.storyLabel}: expected ${hint} in preferences`);
+    }
   }
-  if (!allClient.includes("חניה") && !feats.includes("חניה")) fail(`US-001 live: expected חניה`);
 
-  if (crm.tasks.length < 2) fail(`US-001 live: expected at least 2 tasks`);
+  if (crm.tasks.length < expTasks.minCount) {
+    fail(`${expected.storyLabel}: expected at least ${expTasks.minCount} tasks`);
+  }
 
   const taskBlob = crm.tasks.map((t) => `${t.title} ${t.due_time ?? ""}`).join(" | ");
-  if (!/מחר|11|אחזור|לחזור/i.test(taskBlob)) {
-    fail(`US-001 live: expected follow-up hint (מחר / 11 / לחזור) in tasks`);
+  if (!expTasks.combinedFollowUpHint.test(taskBlob)) {
+    fail(`${expected.storyLabel}: expected follow-up hint in tasks (${expTasks.combinedFollowUpHint})`);
   }
-  if (!/אופציות|שלוש|שליחה|הצעות|ערב/i.test(taskBlob)) {
-    fail(`US-001 live: expected sending options / evening commitment in tasks`);
+  if (!expTasks.combinedOptionsHint.test(taskBlob)) {
+    fail(`${expected.storyLabel}: expected options/evening commitment in tasks (${expTasks.combinedOptionsHint})`);
   }
 
-  if (result.trace.response?.replyType !== "actions") {
-    fail(`US-001 live: expected actions reply, got ${result.trace.response?.replyType}`);
+  if (result.trace.response?.replyType !== pipeline.replyType) {
+    fail(`${expected.storyLabel}: expected ${pipeline.replyType} reply, got ${result.trace.response?.replyType}`);
   }
 }
 
@@ -158,13 +181,14 @@ export function assertUs002PipelineStrict(ctx: PipelineStoryContext): void {
   if (result.trace.response?.replyType !== "actions") fail(`US-002: replyType`);
 }
 
-/** Live LLM: require seller client + property + meeting task (tolerates wording). */
-export function assertUs002PipelineLive(ctx: PipelineStoryContext): void {
+/** Live LLM: seller client + property + meeting task — validated against `expected`. */
+export function assertUs002PipelineLive(ctx: PipelineStoryContext, expected: Us002LiveExpectation): void {
   const { result, fakeCrm: crm } = ctx;
+  const { pipeline, client: expClient, property: expProp, tasks: expTasks } = expected;
 
-  if (result.validActions.length < 3) {
+  if (result.validActions.length < pipeline.validActionsMin) {
     fail(
-      `US-002 live: need client + property + task (${result.validActions.length} actions). Snippet: ${result.response.slice(0, 280)}`
+      `${expected.storyLabel}: need client + property + task (${result.validActions.length} actions). Snippet: ${result.response.slice(0, 280)}`
     );
   }
 
@@ -172,31 +196,53 @@ export function assertUs002PipelineLive(ctx: PipelineStoryContext): void {
   const propActs = result.validActions.filter((a) => a.type === "create_or_update_property");
   const taskActs = result.validActions.filter((a) => a.type === "create_task");
 
-  if (clientActs.length < 1) fail(`US-002 live: missing create_or_update_client (seller)`);
-  if (propActs.length < 1) fail(`US-002 live: missing create_or_update_property`);
-  if (taskActs.length < 1) fail(`US-002 live: missing create_task (meeting)`);
+  const min = pipeline.minActionsByType;
+  if (clientActs.length < min.create_or_update_client) {
+    fail(`${expected.storyLabel}: missing create_or_update_client (seller)`);
+  }
+  if (propActs.length < min.create_or_update_property) {
+    fail(`${expected.storyLabel}: missing create_or_update_property`);
+  }
+  if (taskActs.length < min.create_task) {
+    fail(`${expected.storyLabel}: missing create_task (meeting)`);
+  }
 
-  const client = crm.clients.find((c) => c.name.includes("מיכל") && c.name.includes("כהן"));
+  const [partA, partB] = expClient.nameIncludesBoth;
+  const client = crm.clients.find((c) => c.name.includes(partA) && c.name.includes(partB));
   if (!client) {
     fail(
-      `US-002 live: no client מיכל כהן in fake CRM — got clients: ${crm.clients.map((c) => c.name).join(", ") || "(none)"}`
+      `${expected.storyLabel}: no matching seller client — got clients: ${crm.clients.map((c) => c.name).join(", ") || "(none)"}`
     );
   }
-  if (client.role !== "owner") fail(`US-002 live: expected seller role owner, got ${client.role}`);
-  near(client.preferences?.budget ?? 0, 2_850_000, 200_000, "US-002 live: seller asking budget");
+  if (client.role !== expClient.role) {
+    fail(`${expected.storyLabel}: expected seller role ${expClient.role}, got ${client.role}`);
+  }
+  near(
+    client.preferences?.budget ?? 0,
+    expClient.budgetApprox,
+    expClient.budgetTolerance,
+    `${expected.storyLabel}: seller asking budget`
+  );
 
-  if (crm.properties.length < 1) fail(`US-002 live: no property in CRM`);
+  if (crm.properties.length < 1) fail(`${expected.storyLabel}: no property in CRM`);
   const prop = crm.properties[0]!;
   const addr = `${prop.address} ${prop.city ?? ""}`;
-  if (!addr.includes("ביאליק") || !addr.includes("23")) {
-    fail(`US-002 live: address should mention ביאליק and 23, got «${prop.address}» / «${prop.city}»`);
+  for (const frag of expProp.addressMustIncludeAll) {
+    if (!addr.includes(frag)) {
+      fail(`${expected.storyLabel}: address should mention «${frag}», got «${prop.address}» / «${prop.city}»`);
+    }
   }
-  near(prop.rooms ?? 0, 3.5, 0.51, "US-002 live: rooms");
-  near(prop.asking_price ?? 0, 2_850_000, 200_000, "US-002 live: asking_price");
+  near(prop.rooms ?? 0, expProp.roomsApprox, expProp.roomsTolerance, `${expected.storyLabel}: rooms`);
+  near(
+    prop.asking_price ?? 0,
+    expProp.askingPriceApprox,
+    expProp.askingPriceTolerance,
+    `${expected.storyLabel}: asking_price`
+  );
 
   const featStr = (prop.features ?? []).join(" ");
-  if (!/חניה|טאבו|קומה|מעלית|בלי/i.test(featStr)) {
-    fail(`US-002 live: expected listing features (חניה/קומה/מעלית…), got «${featStr}»`);
+  if (!expProp.featuresCombinedPattern.test(featStr)) {
+    fail(`${expected.storyLabel}: expected listing features, got «${featStr}»`);
   }
 
   const propNotes = `${prop.price_note ?? ""} ${prop.general_notes ?? ""}`;
@@ -206,29 +252,32 @@ export function assertUs002PipelineLive(ctx: PipelineStoryContext): void {
       : "";
   /** Property notes and seller preferences — LLM often puts exclusivity on the client card. */
   const storyNotesBlob = `${propNotes} ${sellerPrefsJson}`;
-  if (!/שוק|בדוק|מחיר/i.test(storyNotesBlob)) {
-    fail(`US-002 live: expected price/context (שוק/מחיר) on property notes or seller preferences`);
+  const [pricePat, exclusivityPat] = expProp.storyNotesMustMatchBoth;
+  if (!pricePat.test(storyNotesBlob)) {
+    fail(`${expected.storyLabel}: expected price/context on property notes or seller preferences (${pricePat})`);
   }
-  if (!/בלעדיות|שווי|הערכ/i.test(storyNotesBlob)) {
-    fail(`US-002 live: expected exclusivity / valuation note on property notes or seller preferences`);
+  if (!exclusivityPat.test(storyNotesBlob)) {
+    fail(
+      `${expected.storyLabel}: expected exclusivity / valuation note on property notes or seller preferences (${exclusivityPat})`
+    );
   }
 
-  if (!prop.owner_client_name?.includes("מיכל")) {
+  if (!prop.owner_client_name?.includes(expProp.ownerClientNameIncludes)) {
     fail(
-      `US-002 live: property.owner_client_name should reference המוכרת (מיכל…), got «${prop.owner_client_name ?? ""}»`
+      `${expected.storyLabel}: property.owner_client_name should reference seller (${expProp.ownerClientNameIncludes}…), got «${prop.owner_client_name ?? ""}»`
     );
   }
 
   const taskText = `${crm.tasks.map((t) => `${t.title} ${t.due_time ?? ""}`).join(" ")}`;
-  if (!/פגישה|נכס|מיכל|קבוע/i.test(taskText)) {
-    fail(`US-002 live: task should mention meeting / נכס / מיכל`);
+  if (!expTasks.combinedMeetingContextPattern.test(taskText)) {
+    fail(`${expected.storyLabel}: task should match meeting context (${expTasks.combinedMeetingContextPattern})`);
   }
-  if (!/חמישי|אחר הצהריים/i.test(taskText)) {
-    fail(`US-002 live: task should mention יום חמישי אחר הצהריים (or equivalent)`);
+  if (!expTasks.combinedDueTimePattern.test(taskText)) {
+    fail(`${expected.storyLabel}: task should match due-time window (${expTasks.combinedDueTimePattern})`);
   }
 
-  if (result.trace.response?.replyType !== "actions") {
-    fail(`US-002 live: expected actions reply, got ${result.trace.response?.replyType}`);
+  if (result.trace.response?.replyType !== pipeline.replyType) {
+    fail(`${expected.storyLabel}: expected ${pipeline.replyType} reply, got ${result.trace.response?.replyType}`);
   }
 }
 
@@ -270,7 +319,7 @@ function assertUs003BareDemoListing(demoListing: DemoCrmSnapshot["properties"][n
   }
 }
 
-/** Mocked pipeline: פוסט־ביקור מול CRM ריק — יוצר רוכש איתי, נכס בהירדן 12 (בעלים לא ידוע), משימה. */
+/** Mocked pipeline: פוסט־ביקור מול CRM ריק — יוצר רוכש איתי לוי, נכס בהירדן 12 (בעלים לא ידוע), משימה. */
 export function assertUs003PipelineStrict(ctx: PipelineStoryContext): void {
   const { result, fakeCrm: crm } = ctx;
 
@@ -281,7 +330,7 @@ export function assertUs003PipelineStrict(ctx: PipelineStoryContext): void {
     fail(`US-003 strict: expected 3 executionResults, got ${result.executionResults.length}`);
   }
   if (crm.clients.length !== 1) {
-    fail(`US-003 strict: expected 1 client (buyer איתי), got ${crm.clients.length}`);
+    fail(`US-003 strict: expected 1 client (buyer איתי לוי), got ${crm.clients.length}`);
   }
   if (crm.properties.length !== 1) {
     fail(`US-003 strict: expected 1 property, got ${crm.properties.length}`);
@@ -290,19 +339,19 @@ export function assertUs003PipelineStrict(ctx: PipelineStoryContext): void {
     fail(`US-003 strict: expected 1 task, got ${crm.tasks.length}`);
   }
 
-  const itai = crm.clients.find((c) => c.name === "איתי");
-  if (!itai) fail(`US-003: missing איתי client row`);
+  const itai = crm.clients.find((c) => c.name === "איתי לוי");
+  if (!itai) fail(`US-003: missing איתי לוי client row`);
 
-  if (itai.role !== "buyer") fail(`US-003: איתי role`);
-  if (itai.lead_temperature !== "warm") fail(`US-003: איתי lead_temperature warm`);
+  if (itai.role !== "buyer") fail(`US-003: איתי לוי role`);
+  if (itai.lead_temperature !== "warm") fail(`US-003: איתי לוי lead_temperature warm`);
   const touches = (itai.interactions ?? []).map((i) => `${i.summary} ${i.property_address ?? ""}`).join(" ");
-  if ((itai.interactions?.length ?? 0) < 1) fail(`US-003: איתי missing interaction timeline`);
-  if (!touches.includes("הירדן")) fail(`US-003: איתי interaction property link`);
+  if ((itai.interactions?.length ?? 0) < 1) fail(`US-003: איתי לוי missing interaction timeline`);
+  if (!touches.includes("הירדן")) fail(`US-003: איתי לוי interaction property link`);
   const blob = `${clientFeaturesBlob(itai)} ${touches}`;
-  if (!blob.includes("סלון") || !blob.includes("חניה")) fail(`US-003: איתי positives`);
-  if (!blob.includes("מטבח")) fail(`US-003: איתי kitchen objection`);
-  if (!/150|מאה\s*ו\s*חמישים/i.test(blob)) fail(`US-003: איתי price gap`);
-  if (!/מתלבט|מתעניין/i.test(blob)) fail(`US-003: איתי hesitant status`);
+  if (!blob.includes("סלון") || !blob.includes("חניה")) fail(`US-003: איתי לוי positives`);
+  if (!blob.includes("מטבח")) fail(`US-003: איתי לוי kitchen objection`);
+  if (!/150|מאה\s*ו\s*חמישים/i.test(blob)) fail(`US-003: איתי לוי price gap`);
+  if (!/מתלבט|מתעניין/i.test(blob)) fail(`US-003: איתי לוי hesitant status`);
 
   const prop = crm.properties[0]!;
   if (prop.address !== "הירדן 12") fail(`US-003: property address`);
@@ -312,7 +361,7 @@ export function assertUs003PipelineStrict(ctx: PipelineStoryContext): void {
   if (!task.title.includes("איתי")) fail(`US-003: task buyer name`);
   if (!task.title.includes("הירדן")) fail(`US-003: task property hint`);
   if (!task.due_time?.includes("מחר") || !task.due_time.includes("ערב")) fail(`US-003: task due מחר בערב`);
-  if (task.client_name !== "איתי") fail(`US-003: task client_name`);
+  if (task.client_name !== "איתי לוי") fail(`US-003: task client_name`);
 
   if (ctx.demoCrm.clients.length !== 1) fail(`US-003: demo clients`);
   if (ctx.demoCrm.properties.length !== 1) fail(`US-003: demo properties`);
@@ -322,7 +371,7 @@ export function assertUs003PipelineStrict(ctx: PipelineStoryContext): void {
   if (demoProp?.address !== "הירדן 12") fail(`US-003: demo address`);
   if (demoProp) assertUs003BareDemoListing(demoProp, "US-003");
 
-  const demoItai = ctx.demoCrm.clients.find((cl) => cl.name === "איתי");
+  const demoItai = ctx.demoCrm.clients.find((cl) => cl.name === "איתי לוי");
   if ((demoItai?.interactions?.length ?? 0) < 1) {
     fail(`US-003: demo client interactions`);
   }
@@ -335,27 +384,34 @@ export function assertUs003PipelineStrict(ctx: PipelineStoryContext): void {
   if (result.trace.response?.replyType !== "actions") fail(`US-003: replyType`);
 }
 
-/** Live LLM: post-visit single buyer + empty CRM — tolerant wording; expects substance on buyer, listing row, calendar. */
-export function assertUs003PipelineLive(ctx: PipelineStoryContext): void {
+/** Live LLM: post-visit buyer — tolerant wording; validated against `expected`. */
+export function assertUs003PipelineLive(ctx: PipelineStoryContext, expected: Us003LiveExpectation): void {
   const { result, fakeCrm: crm } = ctx;
+  const { pipeline, buyer: expBuyer, listing: expListing, tasks: expTasks, demo: expDemo } = expected;
 
-  if (result.validActions.length < 2) {
+  if (result.validActions.length < pipeline.validActionsMin) {
     fail(
-      `US-003 live: expected ≥2 validActions (buyer update + task / property). Got ${result.validActions.length}. Snippet: ${result.response.slice(0, 320)}`
+      `${expected.storyLabel}: expected ≥${pipeline.validActionsMin} validActions (buyer update + task / property). Got ${result.validActions.length}. Snippet: ${result.response.slice(0, 320)}`
     );
   }
 
   const clientActs = result.validActions.filter((a) => a.type === "create_or_update_client");
   const taskActs = result.validActions.filter((a) => a.type === "create_task");
 
-  if (clientActs.length < 1) {
-    fail(`US-003 live: need buyer update for איתי, got ${clientActs.length} client actions`);
+  if (clientActs.length < pipeline.minCreateOrUpdateClient) {
+    fail(
+      `${expected.storyLabel}: need buyer update (${pipeline.minCreateOrUpdateClient}+ client actions), got ${clientActs.length}`
+    );
   }
-  if (taskActs.length < 1) fail(`US-003 live: need at least one follow-up task`);
+  if (taskActs.length < pipeline.minCreateTask) {
+    fail(`${expected.storyLabel}: need at least ${pipeline.minCreateTask} follow-up task(s)`);
+  }
 
-  const itai = crm.clients.find((c) => c.name.includes("איתי"));
+  const itai = crm.clients.find((c) => c.name.includes(expBuyer.nameIncludes));
   if (!itai) {
-    fail(`US-003 live: CRM missing איתי after run — ${crm.clients.map((c) => c.name).join(", ") || "(none)"}`);
+    fail(
+      `${expected.storyLabel}: CRM missing buyer after run — ${crm.clients.map((c) => c.name).join(", ") || "(none)"}`
+    );
   }
 
   const buyerBlob = (c: FakeClient): string =>
@@ -365,45 +421,122 @@ export function assertUs003PipelineLive(ctx: PipelineStoryContext): void {
     ].join(" ");
 
   const c = itai;
+  const temps = expBuyer.heat.allowedLeadTemperatures;
   const heatOk =
-    c.lead_temperature === "warm" ||
-    c.lead_temperature === "hot" ||
-    (c.interactions?.length ?? 0) > 0 ||
-    /מתלבט|מתעניין|חושב/i.test(buyerBlob(c));
+    (c.lead_temperature != null &&
+      temps.includes(c.lead_temperature as (typeof temps)[number])) ||
+    (expBuyer.heat.interactionsCountHeatIfPositive && (c.interactions?.length ?? 0) > 0) ||
+    expBuyer.heat.hesitationOrThinkingPattern.test(buyerBlob(c));
   if (!heatOk) {
-    fail(`US-003 live: expected warm-ish interest / touch log on ${c.name}`);
+    fail(`${expected.storyLabel}: expected warm-ish interest / touch log on ${c.name}`);
   }
   const blob = buyerBlob(c);
-  if (!blob.includes("סלון") || !blob.includes("חניה")) {
-    fail(`US-003 live: expected positives (סלון, חניה) on ${c.name}`);
+  for (const sub of expBuyer.feedbackBlobMustInclude) {
+    if (!blob.includes(sub)) {
+      fail(`${expected.storyLabel}: expected «${sub}» on ${c.name}`);
+    }
   }
-  if (!blob.includes("מטבח")) fail(`US-003 live: kitchen concern on ${c.name}`);
-  if (!/150|מאה|אלף|פער|גבוה|יקר|מחיר/i.test(blob)) {
-    fail(`US-003 live: price objection not captured on ${c.name}`);
+  if (!blob.includes(expBuyer.kitchenConcernSubstring)) {
+    fail(`${expected.storyLabel}: kitchen concern on ${c.name}`);
+  }
+  if (!expBuyer.priceObjectionPattern.test(blob)) {
+    fail(`${expected.storyLabel}: price objection not captured on ${c.name} (${expBuyer.priceObjectionPattern})`);
   }
 
-  const prop = crm.properties.find((p) => /הירדן/.test(p.address) && /12/.test(p.address));
-  if (!prop) fail(`US-003 live: missing property הירדן 12`);
-  assertUs003BareListingAsset(prop, "US-003 live");
-
-  const demoListing = ctx.demoCrm.properties.find(
-    (p) => /הירדן/.test(p.address) && /12/.test(p.address)
+  const prop = crm.properties.find((p) =>
+    expListing.addressMustMatchAll.every((rx) => rx.test(p.address))
   );
-  if (!demoListing) fail(`US-003 live: demo listing הירדן 12 missing`);
-  assertUs003BareDemoListing(demoListing, "US-003 live");
+  if (!prop) fail(`${expected.storyLabel}: missing listing matching ${expListing.addressMustMatchAll}`);
+  if (expListing.structuralRowOnlyNoDetails) {
+    assertUs003BareListingAsset(prop, expected.storyLabel);
+  }
 
-  if (crm.tasks.length < 1) fail(`US-003 live: expected ≥1 task`);
+  const demoListing = ctx.demoCrm.properties.find((p) =>
+    expListing.addressMustMatchAll.every((rx) => rx.test(p.address))
+  );
+  if (!demoListing) fail(`${expected.storyLabel}: demo listing missing`);
+  if (expListing.structuralRowOnlyNoDetails) {
+    assertUs003BareDemoListing(demoListing, expected.storyLabel);
+  }
+
+  if (crm.tasks.length < expTasks.minCount) {
+    fail(`${expected.storyLabel}: expected ≥${expTasks.minCount} task(s)`);
+  }
   const taskBlob = crm.tasks.map((t) => `${t.title} ${t.due_time ?? ""}`).join(" | ");
-  if (!/מחר/i.test(taskBlob) || !/ערב/i.test(taskBlob)) {
-    fail(`US-003 live: follow-up should target tomorrow evening (${taskBlob})`);
+  if (!expTasks.tomorrowPattern.test(taskBlob) || !expTasks.eveningPattern.test(taskBlob)) {
+    fail(`${expected.storyLabel}: follow-up should target tomorrow evening (${taskBlob})`);
   }
-  if (!/איתי/i.test(taskBlob)) {
-    fail(`US-003 live: task should reference buyer איתי (${taskBlob})`);
+  if (!expTasks.mustReferenceBuyerPattern.test(taskBlob)) {
+    fail(`${expected.storyLabel}: task should reference buyer (${taskBlob})`);
   }
 
-  if (ctx.demoCrm.calendar.length < 1) fail(`US-003 live: demo calendar missing task`);
+  if (ctx.demoCrm.calendar.length < expDemo.calendarMinEntries) {
+    fail(`${expected.storyLabel}: demo calendar missing task`);
+  }
 
-  if (result.trace.response?.replyType !== "actions") {
-    fail(`US-003 live: expected actions reply, got ${result.trace.response?.replyType}`);
+  if (result.trace.response?.replyType !== pipeline.replyType) {
+    fail(`${expected.storyLabel}: expected ${pipeline.replyType} reply, got ${result.trace.response?.replyType}`);
+  }
+}
+
+/** Live LLM: ambiguous יוסי — turn 1 clarification only; turn 2 resolves to task after server-held history. */
+export function assertUs004AmbiguousYossiLive(
+  ctx1: PipelineStoryContext,
+  ctx2: PipelineStoryContext,
+  expected: Us004LiveExpectation
+): void {
+  const { turn1, turn2 } = expected;
+
+  if (ctx1.result.trace.response?.replyType !== turn1.replyType) {
+    fail(
+      `${expected.storyLabel} turn1: expected ${turn1.replyType}, got ${ctx1.result.trace.response?.replyType}`
+    );
+  }
+  if (ctx1.result.executionResults.length !== 0) {
+    fail(`${expected.storyLabel} turn1: expected no CRM execution, got ${ctx1.result.executionResults.length}`);
+  }
+  if (ctx1.result.validActions.length !== 0) {
+    fail(`${expected.storyLabel} turn1: expected no validActions while clarifying`);
+  }
+  if (ctx1.fakeCrm.tasks.length > turn1.taskCountMax) {
+    fail(`${expected.storyLabel} turn1: expected ≤${turn1.taskCountMax} tasks, got ${ctx1.fakeCrm.tasks.length}`);
+  }
+  for (const pat of turn1.clarificationPatterns) {
+    if (!pat.test(ctx1.result.response)) {
+      fail(`${expected.storyLabel} turn1: response should match ${pat}`);
+    }
+  }
+
+  const [a, b] = turn2.chosenClientNameIncludes;
+  if (ctx2.result.trace.response?.replyType !== turn2.replyType) {
+    fail(
+      `${expected.storyLabel} turn2: expected ${turn2.replyType}, got ${ctx2.result.trace.response?.replyType}`
+    );
+  }
+  if (ctx2.result.executionResults.length < 1) {
+    fail(`${expected.storyLabel} turn2: expected CRM execution`);
+  }
+  if (!ctx2.result.executionResults.every((r) => r.success)) {
+    fail(`${expected.storyLabel} turn2: executionResults contained failure`);
+  }
+  if (ctx2.fakeCrm.tasks.length < turn2.tasksMinCount) {
+    fail(`${expected.storyLabel} turn2: expected ≥${turn2.tasksMinCount} tasks`);
+  }
+
+  const taskForChosen = ctx2.fakeCrm.tasks.find(
+    (t) =>
+      t.client_name?.includes(a) &&
+      t.client_name?.includes(b) &&
+      turn2.taskDueHint.test(`${t.title} ${t.due_time ?? ""}`)
+  );
+  if (!taskForChosen) {
+    fail(
+      `${expected.storyLabel} turn2: missing task for ${a}+${b} with due hint (${turn2.taskDueHint}) among ${JSON.stringify(ctx2.fakeCrm.tasks)}`
+    );
+  }
+
+  const titleBlob = `${taskForChosen.title} ${taskForChosen.due_time ?? ""}`;
+  if (!turn2.taskTitleHints.some((rx) => rx.test(titleBlob))) {
+    fail(`${expected.storyLabel} turn2: task title/due should match one of hints (${titleBlob})`);
   }
 }

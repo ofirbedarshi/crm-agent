@@ -1,29 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type { FakeClient } from "../crm/fakeCrmAdapter";
-import { findMatchingClients, resolveAndEnrichCrmActions } from "./resolveAndEnrichCrmActions";
+import type { FakeClient, FakeProperty } from "../crm/fakeCrmAdapter";
+import { resolveAndEnrichCrmActions } from "./resolveAndEnrichCrmActions";
 
 const sampleClients: FakeClient[] = [
   { id: "1", name: "דניאל לוי", role: "buyer", preferences: { areas: ["רמת גן"] } },
   { id: "2", name: "דניאל כהן", role: "buyer" }
 ];
 
-describe("findMatchingClients", () => {
-  it("matches exactly one client by full name", () => {
-    expect(findMatchingClients("דניאל לוי", sampleClients)).toHaveLength(1);
-    expect(findMatchingClients("דניאל לוי", sampleClients)[0]?.name).toBe("דניאל לוי");
-  });
-
-  it("returns multiple clients when token is only a shared first name", () => {
-    expect(findMatchingClients("דניאל", sampleClients).length).toBe(2);
-  });
-
-  it("returns zero clients when token matches nobody", () => {
-    expect(findMatchingClients("שרה יוסף", sampleClients)).toHaveLength(0);
-  });
-});
-
 describe("resolveAndEnrichCrmActions", () => {
-  it("allows informal task client_name when persisted CRM has no clients yet", () => {
+  it("rejects single-word task client_name with zero CRM clients (no empty-CRM passthrough)", () => {
     const result = resolveAndEnrichCrmActions(
       [
         {
@@ -38,11 +23,35 @@ describe("resolveAndEnrichCrmActions", () => {
       []
     );
 
+    expect(result.validActions).toHaveLength(0);
+    expect(result.clarifications.some((q) => q.includes("לא קיים לקוח בשם דני"))).toBe(true);
+    expect(result.rejectedActions).toContainEqual({
+      actionType: "create_task",
+      reason: "task client_name does not resolve to any CRM client"
+    });
+  });
+
+  it("single-word task client_name with exactly one first-token match is allowed with canonical name", () => {
+    const clients: FakeClient[] = [{ id: "1", name: "יוסי כהן", role: "buyer" }];
+    const result = resolveAndEnrichCrmActions(
+      [
+        {
+          type: "create_task",
+          data: {
+            title: "לחזור ליוסי",
+            client_name: "יוסי",
+            due_time: "מחר"
+          }
+        }
+      ],
+      clients
+    );
+
     expect(result.validActions).toHaveLength(1);
     expect(result.clarifications).toHaveLength(0);
     expect(result.validActions[0]).toMatchObject({
       type: "create_task",
-      data: { client_name: "דני" }
+      data: { client_name: "יוסי כהן" }
     });
   });
 
@@ -62,7 +71,11 @@ describe("resolveAndEnrichCrmActions", () => {
     );
 
     expect(result.validActions).toHaveLength(0);
-    expect(result.clarifications.some((q) => q.includes("לא ברור על איזה לקוח"))).toBe(true);
+    expect(
+      result.clarifications.some(
+        (q) => q.includes("יש כמה לקוחות בשם דניאל") && q.includes("למי התכוונת")
+      )
+    ).toBe(true);
     expect(result.rejectedActions).toContainEqual({
       actionType: "create_task",
       reason: "ambiguous task client_name"
@@ -97,27 +110,35 @@ describe("resolveAndEnrichCrmActions", () => {
     expect(result.clarifications).toHaveLength(0);
   });
 
-  it("blocks upsert when the model picks a full name but the user only said a shared first name", () => {
+  it("multi-word task client_name with zero matches auto-creates a bare client card", () => {
     const result = resolveAndEnrichCrmActions(
       [
         {
-          type: "create_or_update_client",
+          type: "create_task",
           data: {
-            name: "דניאל לוי",
-            preferences: { areas: ["רמת גן", "תל אביב"] }
+            title: "פגישה",
+            client_name: "שרה יוסף",
+            due_time: "מחר"
           }
         }
       ],
-      sampleClients,
-      "דניאל מעוניין גם להתגורר בתל אביב"
+      sampleClients
     );
 
-    expect(result.validActions).toHaveLength(0);
-    expect(result.rejectedActions.some((r) => r.reason === "ambiguous user reference for client upsert")).toBe(true);
-    expect(result.clarifications.some((q) => q.includes("לא ברור על מי מתכוונים"))).toBe(true);
+    expect(result.clarifications).toHaveLength(0);
+    expect(result.rejectedActions).toHaveLength(0);
+    expect(result.validActions).toHaveLength(2);
+    expect(result.validActions[0]).toMatchObject({
+      type: "create_or_update_client",
+      data: { name: "שרה יוסף" }
+    });
+    expect(result.validActions[1]).toMatchObject({
+      type: "create_task",
+      data: { client_name: "שרה יוסף" }
+    });
   });
 
-  it("allows upsert when the user message contains the resolved full name", () => {
+  it("allows client upsert when parser returns exact multi-word name (no rawUserMessage guard)", () => {
     const result = resolveAndEnrichCrmActions(
       [
         {
@@ -128,12 +149,12 @@ describe("resolveAndEnrichCrmActions", () => {
           }
         }
       ],
-      sampleClients,
-      "דניאל לוי מעוניין גם בתל אביב"
+      sampleClients
     );
 
     expect(result.validActions).toHaveLength(1);
     expect(result.clarifications).toHaveLength(0);
+    expect(result.validActions[0]?.type).toBe("create_or_update_client");
   });
 
   it("merges preferences against CRM when updating an existing unique client", () => {
@@ -190,14 +211,54 @@ describe("resolveAndEnrichCrmActions", () => {
     expect(result.clarifications).toHaveLength(0);
   });
 
-  it("blocks ambiguous client upserts", () => {
+  it("blocks ambiguous client upserts when single-word matches multiple first tokens", () => {
     const result = resolveAndEnrichCrmActions(
       [{ type: "create_or_update_client", data: { name: "דניאל", preferences: { city: "תל אביב" } } }],
       sampleClients
     );
 
     expect(result.validActions).toHaveLength(0);
-    expect(result.clarifications.some((q) => q.includes("לא ברור על מי מתכוונים"))).toBe(true);
+    expect(
+      result.clarifications.some(
+        (q) => q.includes("יש כמה לקוחות בשם דניאל") && q.includes("למי התכוונת")
+      )
+    ).toBe(true);
+  });
+
+  it("numbers ambiguous יוסי candidates with new format listing full names", () => {
+    const yossiClients: FakeClient[] = [
+      { id: "1", name: "יוסי כהן", role: "buyer", preferences: { areas: ["רמת גן"] } },
+      { id: "2", name: "יוסי ביטון", role: "owner" }
+    ];
+    const props: FakeProperty[] = [
+      {
+        id: "p1",
+        address: "שדרות ירושלים 10",
+        city: "רמת גן",
+        owner_client_name: "יוסי ביטון"
+      }
+    ];
+    const result = resolveAndEnrichCrmActions(
+      [
+        {
+          type: "create_task",
+          data: {
+            title: "לחזור ליוסי מחר לגבי דירה ברמת גן",
+            client_name: "יוסי",
+            due_time: "מחר"
+          }
+        }
+      ],
+      yossiClients,
+      props
+    );
+
+    expect(result.validActions).toHaveLength(0);
+    const q = result.clarifications.join("\n");
+    expect(q).toMatch(/יש כמה לקוחות בשם יוסי/);
+    expect(q).toMatch(/יוסי ביטון/);
+    expect(q).toMatch(/יוסי כהן/);
+    expect(q).toMatch(/למי התכוונת/);
   });
 
   it("infers property owner_client_name when omitted but batch has exactly one owner client", () => {
@@ -212,8 +273,7 @@ describe("resolveAndEnrichCrmActions", () => {
           data: { address: "ביאליק 23", city: "רמת גן", asking_price: 2_850_000 }
         }
       ],
-      [],
-      "דיברתי עם מיכל כהן מרחוב ביאליק 23 ברמת גן"
+      []
     );
 
     const prop = result.validActions.find((a) => a.type === "create_or_update_property");
@@ -222,5 +282,19 @@ describe("resolveAndEnrichCrmActions", () => {
       expect(prop.data.owner_client_name).toBe("מיכל כהן");
     }
     expect(result.clarifications).toHaveLength(0);
+  });
+
+  it("single-word client upsert that slips past validation is rejected in resolver", () => {
+    const result = resolveAndEnrichCrmActions(
+      [{ type: "create_or_update_client", data: { name: "יוסי" } }],
+      []
+    );
+
+    expect(result.validActions).toHaveLength(0);
+    expect(result.clarifications.some((q) => q.includes("מה שם המשפחה של יוסי"))).toBe(true);
+    expect(result.rejectedActions).toContainEqual({
+      actionType: "create_or_update_client",
+      reason: "client name must include first and last name"
+    });
   });
 });

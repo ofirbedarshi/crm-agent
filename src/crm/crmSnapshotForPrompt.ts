@@ -13,12 +13,29 @@ export function formatCrmSnapshotForPrompt(state: {
   const lines: string[] = [];
 
   const clients = state.clients.slice(0, MAX_CLIENT_ROWS);
+
+  // Build first-name collision map so the snapshot can warn the LLM about ambiguous references
+  const firstNameCount: Record<string, string[]> = {};
+  for (const c of clients) {
+    const first = c.name.trim().split(/\s+/)[0];
+    if (first) {
+      if (!firstNameCount[first]) firstNameCount[first] = [];
+      firstNameCount[first]!.push(c.name);
+    }
+  }
+
   lines.push(`לקוחות (${state.clients.length}${state.clients.length > MAX_CLIENT_ROWS ? `, מוצגים ${MAX_CLIENT_ROWS}` : ""}):`);
   if (clients.length === 0) {
     lines.push("(אין לקוחות במערכת)");
   }
   for (const c of clients) {
-    lines.push(`- שם מלא (מפתח במערכת): «${c.name}» · מזהה: ${c.id}`);
+    const first = c.name.trim().split(/\s+/)[0] ?? "";
+    const siblings = (firstNameCount[first] ?? []).filter((n) => n !== c.name);
+    const dupeWarning =
+      siblings.length > 0
+        ? ` · ⚠️ שם פרטי כפול — גם «${siblings.join("», «")}» קיים; אם המשתמש אמר רק «${first}» אל תנחש, בקש הבהרה`
+        : "";
+    lines.push(`- שם מלא (מפתח במערכת): «${c.name}» · מזהה: ${c.id}${dupeWarning}`);
     if (c.role) {
       lines.push(`  תפקיד (פנימי): ${c.role}`);
     }

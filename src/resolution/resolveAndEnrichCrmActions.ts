@@ -20,99 +20,59 @@ function cloneClientsForOverlay(clients: FakeClient[]): FakeClient[] {
   }));
 }
 
-/** Resolve a human-entered name token against CRM clients (exact match, else unique multi-token substring match). */
-export function findMatchingClients(token: string, clients: FakeClient[]): FakeClient[] {
-  const normalizedToken = normalizeWhitespace(token);
-  if (!normalizedToken) {
-    return [];
-  }
-
-  const rows = clients.map((c) => ({
-    client: c,
-    nn: normalizeWhitespace(c.name)
-  }));
-
-  const exact = rows.filter((r) => r.nn === normalizedToken).map((r) => r.client);
-  if (exact.length > 0) {
-    return exact;
-  }
-
-  const words = normalizedToken.split(/\s+/).filter(Boolean);
-  if (words.length === 0) {
-    return [];
-  }
-
-  return rows.filter((r) => words.every((w) => r.nn.includes(w))).map((r) => r.client);
-}
-
-function clarificationAmbiguous(kind: "client" | "task", rawToken: string, candidates: FakeClient[]): string {
-  const names = candidates.map((c) => `«${c.name}»`).join(", ");
-  if (kind === "task") {
-    return `לא ברור על איזה לקוח מתכוונים מהכינוי «${rawToken}» כדי לקבוע את המשימה — האם מדובר ב${names}? תכתוב את השם המלא המדויק.`;
-  }
-  return `לא ברור על מי מתכוונים מהכינוי «${rawToken}» — במערכת יש את הלקוחות ${names}. תכתוב את השם המלא המדויק כדי שאעדכן את הנכון.`;
-}
-
-function clarificationMissingTaskClient(rawToken: string): string {
-  return `לא מצאתי במערכת לקוח בשם «${rawToken}» כדי לשייך אליו משימה — תן שם מלא כפי שמופיע אצלך במערכת או צור קודם כרטיס לקוח.`;
-}
-
-function scrubWordToken(word: string): string {
-  return word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
-}
-
-function messageWords(rawUserMessage: string): string[] {
-  return normalizeWhitespace(rawUserMessage)
-    .split(/\s+/)
-    .map(scrubWordToken)
-    .filter((w) => w.length > 0);
-}
-
-function messageContainsFullClientName(rawUserMessage: string, canonicalName: string): boolean {
-  return normalizeWhitespace(rawUserMessage).includes(normalizeWhitespace(canonicalName));
-}
-
-/** If the message is non-empty, any word matching >1 CRM row is treated as an ambiguous person reference. */
-function firstAmbiguousWordInMessage(
-  rawUserMessage: string,
-  clients: FakeClient[]
-): { word: string; candidates: FakeClient[] } | null {
-  for (const w of messageWords(rawUserMessage)) {
-    if (w.length < 2) {
-      continue;
-    }
-    const hits = findMatchingClients(w, clients);
-    if (hits.length > 1) {
-      return { word: w, candidates: hits };
-    }
-  }
-  return null;
-}
-
 /**
- * The model may output a full client name even when the user only said "דניאל".
- * Block that unless the user's text actually names the resolved client in full.
+ * Resolve a parser name reference against CRM clients using deterministic rules:
+ * - ≥2 words: exact normalized match on client.name only (no substring, no prefix expansion).
+ * - 1 word: match by first token of client.name only.
  */
-function userReferenceBlocksSingleClientMatch(
-  rawUserMessage: string,
-  canonicalName: string,
+function resolveClientRef(
+  parserRef: string,
   clients: FakeClient[]
-): { word: string; candidates: FakeClient[] } | null {
-  if (!normalizeWhitespace(rawUserMessage)) {
-    return null;
+): { match: FakeClient } | { ambiguous: FakeClient[] } | { notFound: true } {
+  const norm = normalizeWhitespace(parserRef);
+  const tokens = norm.split(/\s+/).filter(Boolean);
+
+  if (tokens.length === 0) {
+    return { notFound: true };
   }
-  if (messageContainsFullClientName(rawUserMessage, canonicalName)) {
-    return null;
+
+  if (tokens.length >= 2) {
+    const exact = clients.filter((c) => normalizeWhitespace(c.name) === norm);
+    if (exact.length === 1) return { match: exact[0]! };
+    if (exact.length > 1) return { ambiguous: exact };
+    return { notFound: true };
   }
-  return firstAmbiguousWordInMessage(rawUserMessage, clients);
+
+  // Single word: first-token match
+  const word = tokens[0]!;
+  const matches = clients.filter((c) => {
+    const firstToken = normalizeWhitespace(c.name).split(/\s+/).filter(Boolean)[0];
+    return firstToken === word;
+  });
+  if (matches.length === 1) return { match: matches[0]! };
+  if (matches.length > 1) return { ambiguous: matches };
+  return { notFound: true };
+}
+
+function clarificationAmbiguousRef(nameDisplayed: string, candidates: FakeClient[]): string {
+  const fullNames = candidates
+    .map((c) => c.name)
+    .sort()
+    .join(", ");
+  return `יש כמה לקוחות בשם ${nameDisplayed} (${fullNames}), למי התכוונת?`;
+}
+
+function clarificationClientNotFound(name: string, isSingleWord: boolean): string {
+  if (isSingleWord) {
+    return `לא קיים לקוח בשם ${name}, מה השם המלא?`;
+  }
+  return `לא קיים לקוח בשם ${name} במערכת — בדוק שהשם מדויק כפי שמופיע בכרטיס הלקוח.`;
 }
 
 export function resolveAndEnrichCrmActions(
   actions: SupportedAction[],
-  /** Persisted CRM clients only (SSOT), before applying this batch — used for strict matching once data exists. */
+  /** Persisted CRM clients only (SSOT), before applying this batch. */
   persistedClients: FakeClient[],
-  /** Latest user message (not including history) — used to catch under-specified names the model guessed. */
-  rawUserMessage = "",
   /** Persisted listings (SSOT) — used in the property-linkage phase after person resolution. */
   persistedProperties: FakeProperty[] = []
 ): ResolveAndEnrichResult {
@@ -120,7 +80,7 @@ export function resolveAndEnrichCrmActions(
   const clarifications: string[] = [];
   const rejectedActions: Array<{ actionType: string; reason: string }> = [];
 
-  /** Running view of CRM plus clients introduced earlier in this action batch (same OpenAI response). */
+  /** Running view of CRM plus clients introduced earlier in this action batch (same response). */
   let overlay = cloneClientsForOverlay(persistedClients);
 
   for (const action of actions) {
@@ -137,35 +97,29 @@ export function resolveAndEnrichCrmActions(
         continue;
       }
 
-      const matches = findMatchingClients(rawClient, overlay);
-      if (matches.length === 1) {
-        const canonical = matches[0]!.name;
-        const blocked = userReferenceBlocksSingleClientMatch(rawUserMessage, canonical, overlay);
-        if (blocked) {
-          clarifications.push(clarificationAmbiguous("task", blocked.word, blocked.candidates));
-          rejectedActions.push({
-            actionType: action.type,
-            reason: "ambiguous user reference for task client"
-          });
-          continue;
-        }
+      const resolved = resolveClientRef(rawClient, overlay);
+
+      if ("match" in resolved) {
         out.push({
           ...action,
-          data: {
-            ...action.data,
-            client_name: canonical
-          }
+          data: { ...action.data, client_name: resolved.match.name }
         });
         continue;
       }
 
-      if (matches.length === 0) {
-        // No CRM rows yet: allow informal names (e.g. "דני") for reminders until SSOT has clients.
-        if (persistedClients.length === 0) {
-          out.push(action);
-          continue;
-        }
-        clarifications.push(clarificationMissingTaskClient(rawClient));
+      if ("ambiguous" in resolved) {
+        clarifications.push(
+          clarificationAmbiguousRef(normalizeWhitespace(rawClient), resolved.ambiguous)
+        );
+        rejectedActions.push({ actionType: action.type, reason: "ambiguous task client_name" });
+        continue;
+      }
+
+      // notFound
+      const normClient = normalizeWhitespace(rawClient);
+      const isSingle = normClient.split(/\s+/).filter(Boolean).length === 1;
+      if (isSingle) {
+        clarifications.push(clarificationClientNotFound(normClient, true));
         rejectedActions.push({
           actionType: action.type,
           reason: "task client_name does not resolve to any CRM client"
@@ -173,11 +127,11 @@ export function resolveAndEnrichCrmActions(
         continue;
       }
 
-      clarifications.push(clarificationAmbiguous("task", rawClient, matches));
-      rejectedActions.push({
-        actionType: action.type,
-        reason: "ambiguous task client_name"
-      });
+      // Multi-word name not in CRM: auto-create a bare client card so the task can proceed
+      const synthetic: FakeClient = { id: `pending:${normClient}`, name: normClient };
+      overlay.push(synthetic);
+      out.push({ type: "create_or_update_client", data: { name: normClient } });
+      out.push({ ...action, data: { ...action.data, client_name: normClient } });
       continue;
     }
 
@@ -194,66 +148,44 @@ export function resolveAndEnrichCrmActions(
         continue;
       }
 
-      const matches = findMatchingClients(rawOwner, overlay);
-      if (matches.length === 1) {
-        const canonical = matches[0]!.name;
-        const blocked = userReferenceBlocksSingleClientMatch(rawUserMessage, canonical, overlay);
-        if (blocked) {
-          clarifications.push(clarificationAmbiguous("task", blocked.word, blocked.candidates));
-          rejectedActions.push({
-            actionType: action.type,
-            reason: "ambiguous user reference for property owner_client_name"
-          });
-          continue;
-        }
+      const resolved = resolveClientRef(rawOwner, overlay);
+
+      if ("match" in resolved) {
         out.push({
           ...action,
-          data: {
-            ...action.data,
-            owner_client_name: canonical
-          }
+          data: { ...action.data, owner_client_name: resolved.match.name }
         });
         continue;
       }
 
-      if (matches.length === 0 && persistedClients.length === 0) {
-        out.push(action);
-        continue;
-      }
-
-      if (matches.length === 0) {
-        clarifications.push(clarificationMissingTaskClient(rawOwner));
+      if ("ambiguous" in resolved) {
+        clarifications.push(
+          clarificationAmbiguousRef(normalizeWhitespace(rawOwner), resolved.ambiguous)
+        );
         rejectedActions.push({
           actionType: action.type,
-          reason: "property owner_client_name does not resolve to any CRM client"
+          reason: "ambiguous property owner_client_name"
         });
         continue;
       }
 
-      clarifications.push(clarificationAmbiguous("task", rawOwner, matches));
+      // notFound
+      const isSingle = normalizeWhitespace(rawOwner).split(/\s+/).filter(Boolean).length === 1;
+      clarifications.push(clarificationClientNotFound(normalizeWhitespace(rawOwner), isSingle));
       rejectedActions.push({
         actionType: action.type,
-        reason: "ambiguous property owner_client_name"
+        reason: "property owner_client_name does not resolve to any CRM client"
       });
       continue;
     }
 
+    // create_or_update_client
     const rawName = normalizeWhitespace(action.data.name);
-    const matches = findMatchingClients(rawName, overlay);
+    const resolved = resolveClientRef(rawName, overlay);
 
-    if (matches.length === 1) {
-      const canonical = matches[0]!.name;
-      const blocked = userReferenceBlocksSingleClientMatch(rawUserMessage, canonical, overlay);
-      if (blocked) {
-        clarifications.push(clarificationAmbiguous("client", blocked.word, blocked.candidates));
-        rejectedActions.push({
-          actionType: action.type,
-          reason: "ambiguous user reference for client upsert"
-        });
-        continue;
-      }
-
-      const mergedPrefs = mergeClientPreferences(matches[0]!.preferences, action.data.preferences);
+    if ("match" in resolved) {
+      const canonical = resolved.match.name;
+      const mergedPrefs = mergeClientPreferences(resolved.match.preferences, action.data.preferences);
       const nextData = { ...action.data, name: canonical };
       if (mergedPrefs !== undefined && Object.keys(mergedPrefs).length > 0) {
         nextData.preferences = mergedPrefs;
@@ -262,10 +194,12 @@ export function resolveAndEnrichCrmActions(
       }
 
       const updatedClient: FakeClient = {
-        ...matches[0]!,
+        ...resolved.match,
         ...(action.data.role !== undefined ? { role: action.data.role } : {}),
         ...(action.data.lead_source !== undefined ? { lead_source: action.data.lead_source } : {}),
-        ...(action.data.lead_temperature !== undefined ? { lead_temperature: action.data.lead_temperature } : {})
+        ...(action.data.lead_temperature !== undefined
+          ? { lead_temperature: action.data.lead_temperature }
+          : {})
       };
       if (mergedPrefs !== undefined && Object.keys(mergedPrefs).length > 0) {
         updatedClient.preferences = mergedPrefs;
@@ -275,43 +209,51 @@ export function resolveAndEnrichCrmActions(
         normalizeWhitespace(c.name) === normalizeWhitespace(canonical) ? updatedClient : c
       );
 
-      out.push({
-        ...action,
-        data: nextData
+      out.push({ ...action, data: nextData });
+      continue;
+    }
+
+    if ("ambiguous" in resolved) {
+      clarifications.push(clarificationAmbiguousRef(rawName, resolved.ambiguous));
+      rejectedActions.push({
+        actionType: action.type,
+        reason: "ambiguous create_or_update_client name"
       });
       continue;
     }
 
-    if (matches.length === 0) {
-      const synthetic: FakeClient = {
-        id: `pending:${rawName}`,
-        name: rawName,
-        ...(action.data.role !== undefined ? { role: action.data.role } : {}),
-        ...(action.data.lead_source !== undefined ? { lead_source: action.data.lead_source } : {}),
-        ...(action.data.lead_temperature !== undefined ? { lead_temperature: action.data.lead_temperature } : {}),
-        ...(action.data.preferences !== undefined ? { preferences: { ...action.data.preferences } } : {})
-      };
-      overlay.push(synthetic);
-
-      const nextData = { ...action.data, name: rawName };
-      if (action.data.preferences !== undefined) {
-        nextData.preferences = action.data.preferences;
-      } else {
-        delete nextData.preferences;
-      }
-
-      out.push({
-        ...action,
-        data: nextData
+    // notFound — new client creation
+    const nameTokens = rawName.split(/\s+/).filter(Boolean);
+    if (nameTokens.length < 2) {
+      // Single-word name slipped past validation — reject with last-name question
+      clarifications.push(`מה שם המשפחה של ${rawName}?`);
+      rejectedActions.push({
+        actionType: action.type,
+        reason: "client name must include first and last name"
       });
       continue;
     }
 
-    clarifications.push(clarificationAmbiguous("client", rawName, matches));
-    rejectedActions.push({
-      actionType: action.type,
-      reason: "ambiguous create_or_update_client name"
-    });
+    const synthetic: FakeClient = {
+      id: `pending:${rawName}`,
+      name: rawName,
+      ...(action.data.role !== undefined ? { role: action.data.role } : {}),
+      ...(action.data.lead_source !== undefined ? { lead_source: action.data.lead_source } : {}),
+      ...(action.data.lead_temperature !== undefined
+        ? { lead_temperature: action.data.lead_temperature }
+        : {}),
+      ...(action.data.preferences !== undefined ? { preferences: { ...action.data.preferences } } : {})
+    };
+    overlay.push(synthetic);
+
+    const nextData = { ...action.data, name: rawName };
+    if (action.data.preferences !== undefined) {
+      nextData.preferences = action.data.preferences;
+    } else {
+      delete nextData.preferences;
+    }
+
+    out.push({ ...action, data: nextData });
   }
 
   const afterPropertyLinkage = consolidateListingPatchesFromInteractionAddresses(

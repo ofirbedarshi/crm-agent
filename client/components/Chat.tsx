@@ -36,7 +36,6 @@ function Chat({ onTraceChange }: ChatProps) {
       return;
     }
 
-    const historyForRequest = messages;
     const userMessage: Message = { role: "user", text };
     const thinkingMessage: Message = { role: "bot", text: THINKING_TEXT };
 
@@ -48,10 +47,7 @@ function Chat({ onTraceChange }: ChatProps) {
       const response = await fetch(`${API_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text,
-          history: historyForRequest
-        })
+        body: JSON.stringify({ message: text })
       });
 
       const data = (await response.json()) as { reply?: string; trace?: ChatTrace };

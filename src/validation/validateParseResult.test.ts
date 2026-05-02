@@ -159,13 +159,35 @@ describe("validateParseResult", () => {
     });
   });
 
+  it("rejects create_or_update_client when name is a single word", () => {
+    const result = validateParseResult({
+      actions: [
+        {
+          type: "create_or_update_client",
+          data: { name: "יוסי", role: "buyer" }
+        }
+      ],
+      missing_info: [],
+      clarification_questions: []
+    });
+
+    expect(result.validActions).toHaveLength(0);
+    expect(result.rejectedActions).toContainEqual({
+      actionType: "create_or_update_client",
+      reason: "client name must include first and last name"
+    });
+    expect(result.clarification_questions.some((q) => q.includes("מה שם המשפחה של יוסי"))).toBe(
+      true
+    );
+  });
+
   it("normalizes client interaction patches", () => {
     const result = validateParseResult({
       actions: [
         {
           type: "create_or_update_client",
           data: {
-            name: "איתי",
+            name: "איתי לוי",
             interactions: [
               { summary: "ביקור בדירה — חיובי", property_address: "הירדן 12", type: "פגישה" },
               { description: "Fallback summary field" },
@@ -182,6 +204,7 @@ describe("validateParseResult", () => {
     const client = result.validActions[0];
     expect(client?.type).toBe("create_or_update_client");
     if (client?.type === "create_or_update_client") {
+      expect(client.data.name).toBe("איתי לוי");
       expect(client.data.interactions).toEqual([
         { summary: "ביקור בדירה — חיובי", property_address: "הירדן 12", kind: "פגישה" },
         { summary: "Fallback summary field" }
