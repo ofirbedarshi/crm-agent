@@ -165,7 +165,7 @@ export function createOrUpdateClient(data: CreateOrUpdateClientAction["data"]): 
     clients.set(data.name, updated);
     appendActivity(`עודכן לקוח: ${data.name}`);
     if (data.interactions?.length) {
-      appendActivity(`נוסף תיעוד מגע ללקוח ${data.name}`);
+      appendActivity(`נוספה אינטרקציה ללקוח ${data.name}`);
     }
     return { client: updated, operation: "updated" };
   }
@@ -182,7 +182,7 @@ export function createOrUpdateClient(data: CreateOrUpdateClientAction["data"]): 
   clients.set(data.name, created);
   appendActivity(`נוצר לקוח חדש: ${data.name}`);
   if (data.interactions?.length) {
-    appendActivity(`נוסף תיעוד מגע ללקוח ${data.name}`);
+    appendActivity(`נוספה אינטרקציה ללקוח ${data.name}`);
   }
   return { client: created, operation: "created" };
 }

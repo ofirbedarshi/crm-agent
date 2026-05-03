@@ -7,7 +7,7 @@ import { evalInputs } from "./evalInputs";
 import { JUDGE_SYSTEM_PROMPT } from "./judgePrompt";
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
-const JUDGE_MODEL = "gpt-4o-mini";
+const JUDGE_MODEL = "gpt-4o";
 
 interface JudgeResult {
   score: number;

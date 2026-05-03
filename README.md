@@ -7,7 +7,7 @@ This project turns Hebrew free-text from a real estate workflow into structured 
 The project is in an **early functional MVP** stage.
 
 What already works:
-- OpenAI-based parser (`gpt-4o-mini`) with strict JSON output shape.
+- OpenAI-based parser (`gpt-4o`) with strict JSON output shape.
 - Strict action normalization and validation.
 - Fake CRM execution with in-memory IDs and state.
 - Hebrew response generation based on executed actions or clarifications.

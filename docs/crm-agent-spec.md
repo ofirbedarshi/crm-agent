@@ -42,7 +42,7 @@ Rules:
 ## 5. Parser Requirements
 
 - Provider: OpenAI
-- Model: `gpt-4o-mini`
+- Model: `gpt-4o`
 - Temperature: `0`
 - Response format: `json_object`
 - Input language support: Hebrew

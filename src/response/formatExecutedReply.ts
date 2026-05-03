@@ -147,7 +147,7 @@ function formatClientSentence(
 
   if (action.data.interactions && action.data.interactions.length > 0) {
     sentences.push(
-      `תיעוד מגע (${action.data.interactions.length}): ${action.data.interactions
+      `אינטרקציות (${action.data.interactions.length}): ${action.data.interactions
         .map((i) => {
           const tag = i.kind?.trim() ? `[${i.kind.trim()}] ` : "";
           return `${tag}${i.summary}`;

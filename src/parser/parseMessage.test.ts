@@ -248,7 +248,7 @@ describe("parseMessage", () => {
       missing_info: [],
       clarification_questions: []
     });
-    expect(result._debug?.llm.model).toBe("gpt-4o-mini");
+    expect(result._debug?.llm.model).toBe("gpt-4o");
     expect(result._debug?.llm.parseStatus).toBe("ok");
   });
 

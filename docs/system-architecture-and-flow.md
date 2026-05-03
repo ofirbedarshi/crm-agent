@@ -19,7 +19,7 @@ It does not try to be a chat bot. It is a pipeline that decides:
 
 2. **Parser (LLM)**
    - File: `src/parser/parseMessage.ts`
-   - Uses OpenAI `gpt-4o-mini`.
+   - Uses OpenAI `gpt-4o`.
    - Temperature is `0` for deterministic behavior as much as possible.
    - Response format is `json_object`.
    - The system prompt enforces:

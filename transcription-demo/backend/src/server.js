@@ -75,7 +75,7 @@ app.post("/transcribe", upload.single("audio"), async (req, res) => {
       typeof transcription === "string" ? transcription : transcription.text || "";
 
     const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_CLEANUP_MODEL || "gpt-4o-mini",
+      model: process.env.OPENAI_CLEANUP_MODEL || "gpt-4o",
       temperature: 0.2,
       response_format: { type: "json_object" },
       messages: [

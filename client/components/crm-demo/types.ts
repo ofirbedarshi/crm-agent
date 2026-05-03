@@ -15,14 +15,14 @@ export interface ClientPreferences {
   flexibleEntry?: string;
 }
 
-/** תיעוד מגע מהשרת (ביקור, שיחה, הודעה וכו׳). */
+/** אינטרקציה מהשרת (ביקור, שיחה, הודעה וכו׳). */
 export interface DemoClientInteraction {
   id: string;
   summary: string;
   recordedAt: string;
-  /** סוג המגע — טקסט חופשי מהפארסר / מהסוכן */
+  /** סוג האינטרקציה — טקסט חופשי מהפארסר / מהסוכן */
   kind?: string;
-  /** כתובות נכס שצוינו במגע */
+  /** כתובות נכס שצוינו באינטרקציה */
   propertyAddresses?: string[];
   /** משימות יומן מקושרות (מזהים מ־calendar באותו דמו). */
   relatedTaskIds?: string[];

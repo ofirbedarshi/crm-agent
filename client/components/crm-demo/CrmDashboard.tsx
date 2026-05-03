@@ -62,6 +62,19 @@ function normalizeStreetToken(s: string): string {
   return s.trim().replace(/\s+/g, " ");
 }
 
+function normalizeClientKey(s: string): string {
+  return s.trim().replace(/\s+/g, " ");
+}
+
+function calendarEntriesForClient(
+  clientName: string,
+  calendar: DemoCalendarEntry[]
+): DemoCalendarEntry[] {
+  const key = normalizeClientKey(clientName);
+  if (!key) return [];
+  return calendar.filter((e) => normalizeClientKey(e.clientName) === key);
+}
+
 function propertiesMatchingAddresses(
   tokens: string[] | undefined,
   allProperties: DemoProperty[]
@@ -130,6 +143,16 @@ function ClientDetailPanel({
     [client.interactions]
   );
 
+  const clientCalendar = useMemo(
+    () => calendarEntriesForClient(client.name, calendar),
+    [client.name, calendar]
+  );
+
+  const clientCalendarByDate = useMemo(
+    () => groupCalendarByDate(clientCalendar),
+    [clientCalendar]
+  );
+
   return (
     <>
       <button type="button" className="crm-panel-backdrop" aria-label="סגור פאנל" onClick={onClose} />
@@ -182,9 +205,47 @@ function ClientDetailPanel({
           </section>
 
           <section className="crm-detail-section">
-            <h3 className="crm-detail-heading">תיעוד מגעים</h3>
+            <h3 className="crm-detail-heading">יומן</h3>
+            {clientCalendar.length === 0 ? (
+              <p className="crm-detail-muted">אין אירועים ביומן ללקוח זה.</p>
+            ) : (
+              <div className="crm-cal-timeline">
+                {clientCalendarByDate.map(([date, items]) => (
+                  <section key={date} className="crm-cal-day">
+                    <h4 className="crm-cal-day-title">{date}</h4>
+                    <ul className="crm-cal-items">
+                      {items.map((item) => (
+                        <li key={item.id} className="crm-cal-item">
+                          <span className="crm-cal-emoji" aria-hidden="true">
+                            {calendarKindEmoji(item.kind)}
+                          </span>
+                          <div className="crm-cal-body">
+                            <div className="crm-cal-line">
+                              <strong>{item.title}</strong>
+                              {item.time ? (
+                                <span className="crm-cal-time"> ({item.time})</span>
+                              ) : null}
+                            </div>
+                            <div className="crm-cal-meta">
+                              <span className="crm-cal-kind">{item.kind}</span>
+                              {item.description ? (
+                                <span className="crm-cal-desc"> — {item.description}</span>
+                              ) : null}
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="crm-detail-section">
+            <h3 className="crm-detail-heading">אינטרקציות</h3>
             {timeline.length === 0 ? (
-              <p className="crm-detail-muted">אין תיעוד מגע עדיין.</p>
+              <p className="crm-detail-muted">אין אינטרקציות עדיין.</p>
             ) : (
               <ul className="crm-interaction-list">
                 {timeline.map((ix: DemoClientInteraction) => {
@@ -196,14 +257,14 @@ function ClientDetailPanel({
                         {ix.kind ? (
                           <span className="crm-badge crm-badge-muted">{ix.kind}</span>
                         ) : (
-                          <span className="crm-badge crm-badge-muted">מגע</span>
+                          <span className="crm-badge crm-badge-muted">אינטרקציה</span>
                         )}
                         <span className="crm-interaction-when">{ix.recordedAt}</span>
                       </div>
                       <p className="crm-interaction-summary">{ix.summary}</p>
                       {ix.propertyAddresses && ix.propertyAddresses.length > 0 ? (
                         <div className="crm-interaction-sub">
-                          <span className="crm-interaction-sub-label">כתובות במגע:</span>
+                          <span className="crm-interaction-sub-label">כתובות באינטרקציה:</span>
                           <ul className="crm-interaction-addresses">
                             {ix.propertyAddresses.map((addr) => (
                               <li key={addr}>{addr}</li>

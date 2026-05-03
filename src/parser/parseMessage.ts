@@ -7,7 +7,7 @@ import type {
 } from "../types/parser";
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
-const DEFAULT_MODEL = "gpt-4o-mini";
+const DEFAULT_MODEL = "gpt-4o";
 
 const SUPPORTED_ACTION_TYPES: SupportedActionType[] = [
   "create_or_update_client",
