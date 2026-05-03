@@ -1,5 +1,6 @@
 interface TracePanelProps {
   trace: Record<string, unknown> | null;
+  onClose?: () => void;
 }
 
 interface FlowStage {
@@ -530,13 +531,27 @@ function buildHebrewFlow(trace: Record<string, unknown>): {
   return { stages, actionItems, globalError, timingFooter };
 }
 
-function TracePanel({ trace }: TracePanelProps) {
+function TracePanel({ trace, onClose }: TracePanelProps) {
   const flow = trace ? buildHebrewFlow(trace) : null;
   const stages = flow?.stages ?? [];
 
   return (
     <aside className="trace-panel" dir="rtl" lang="he">
-      <header className="trace-panel-header">מסלול עיבוד ההודעה</header>
+      <header
+        className={`trace-panel-header${onClose ? " trace-panel-header--with-close" : ""}`}
+      >
+        <span className="trace-panel-header-title">מסלול עיבוד ההודעה</span>
+        {onClose ? (
+          <button
+            type="button"
+            className="trace-panel-close"
+            onClick={onClose}
+            aria-label="סגור מסלול עיבוד"
+          >
+            סגור
+          </button>
+        ) : null}
+      </header>
       <div className="trace-panel-body">
         {!trace ? (
           <p className="trace-panel-empty">

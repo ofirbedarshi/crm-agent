@@ -5,22 +5,28 @@ import CrmDashboard from "./components/crm-demo/CrmDashboard";
 import { CrmDemoProvider } from "./components/crm-demo/CrmDemoContext";
 import TracePanel from "./components/TracePanel";
 import TripaneShell from "./components/TripaneShell";
-import { showMessageTraceUi } from "./src/featureFlags";
 
 function App() {
   const [latestTrace, setLatestTrace] = useState<ChatTrace | null>(null);
+  const [messageTraceOpen, setMessageTraceOpen] = useState(false);
 
   return (
     <CrmDemoProvider>
       <TripaneShell
         trace={
-          showMessageTraceUi ? (
+          messageTraceOpen ? (
             <div className="trace-pane-host" dir="ltr">
-              <TracePanel trace={latestTrace} />
+              <TracePanel trace={latestTrace} onClose={() => setMessageTraceOpen(false)} />
             </div>
           ) : null
         }
-        chat={<Chat onTraceChange={setLatestTrace} />}
+        chat={
+          <Chat
+            onTraceChange={setLatestTrace}
+            messageTraceOpen={messageTraceOpen}
+            onMessageTraceToggle={() => setMessageTraceOpen((v) => !v)}
+          />
+        }
         crm={<CrmDashboard />}
       />
     </CrmDemoProvider>

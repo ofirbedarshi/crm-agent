@@ -17,9 +17,11 @@ const MIME_CANDIDATES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
 
 interface ChatProps {
   onTraceChange?: (trace: ChatTrace | null) => void;
+  messageTraceOpen: boolean;
+  onMessageTraceToggle: () => void;
 }
 
-function Chat({ onTraceChange }: ChatProps) {
+function Chat({ onTraceChange, messageTraceOpen, onMessageTraceToggle }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -231,6 +233,19 @@ function Chat({ onTraceChange }: ChatProps) {
             שליחה
           </button>
         </form>
+
+        <div className="chat-trace-toggle-row">
+          <button
+            type="button"
+            className={`chat-trace-toggle${messageTraceOpen ? " chat-trace-toggle--on" : ""}`}
+            onClick={onMessageTraceToggle}
+            aria-pressed={messageTraceOpen}
+          >
+            {messageTraceOpen
+              ? "הסתר לוגים ומסלול עיבוד"
+              : "הצגת לוגים ומסלול עיבוד (בעברית)"}
+          </button>
+        </div>
       </section>
     </main>
   );

@@ -118,6 +118,14 @@ export default function TripaneShell({ trace, chat, crm }: TripaneShellProps) {
     tracePaneVisibleRef.current = tracePaneVisible;
   }, [tracePaneVisible]);
 
+  const prevTracePaneVisibleRef = useRef(false);
+  useEffect(() => {
+    if (isNarrow && tracePaneVisible && !prevTracePaneVisibleRef.current) {
+      setMobileTab("trace");
+    }
+    prevTracePaneVisibleRef.current = tracePaneVisible;
+  }, [tracePaneVisible, isNarrow]);
+
   useEffect(() => {
     if (!tracePaneVisible && mobileTab === "trace") {
       setMobileTab("chat");
