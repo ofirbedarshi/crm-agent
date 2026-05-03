@@ -26,9 +26,10 @@ describe("formatExecutedReply", () => {
       [execution]
     );
 
-    expect(text).toContain("יצרתי כרטיס לקוח");
+    expect(text).toMatch(/^• יצרתי כרטיס לקוח/m);
     expect(text).not.toContain("עדכנתי את פרטי הלקוח");
     expect(text).toMatch(/רמת גן/);
+    expect(text).toContain("פרטים בכרטיס:");
   });
 
   it("uses updated wording and mentions what changed", () => {
@@ -57,7 +58,7 @@ describe("formatExecutedReply", () => {
       [execution]
     );
 
-    expect(text).toContain("עדכנתי את פרטי הלקוח");
+    expect(text).toMatch(/^• עדכנתי את פרטי הלקוח/m);
     expect(text).toContain("עדכון הפעם");
     expect(text).toMatch(/תל אביב/);
     expect(text).not.toContain("תקציב");
@@ -69,7 +70,7 @@ describe("formatExecutedReply", () => {
       [{ type: "create_task", data: { title: "לשלוח הצעות", client_name: "דניאל" } }],
       [{ actionType: "create_task", success: true }]
     );
-    expect(text).toContain("יצרתי משימה");
+    expect(text).toMatch(/^• יצרתי משימה/m);
     expect(text).toContain("לשלוח הצעות");
   });
 
@@ -90,8 +91,42 @@ describe("formatExecutedReply", () => {
       ],
       [{ actionType: "create_or_update_property", success: true, entityId: "p1" }]
     );
-    expect(text).toMatch(/יצרתי כרטיס נכס עבור מיכל כהן בכתובת ביאליק 23/);
+    expect(text).toMatch(/^• יצרתי כרטיס נכס עבור מיכל כהן בכתובת ביאליק 23/m);
     expect(text).not.toContain("בעלים:");
     expect(text).toMatch(/מחיר שוק/);
+    expect(text).toContain("  – ");
+  });
+
+  it("separates multiple actions with a blank line and indents visit summary under client", () => {
+    const execution: ActionExecutionResult = {
+      actionType: "create_or_update_client",
+      success: true,
+      clientOperation: "created",
+      clientSnapshot: { id: "c1", name: "איתי לוי", role: "buyer", preferences: {} }
+    };
+    const text = formatExecutedReply(
+      [
+        {
+          type: "create_or_update_client",
+          data: {
+            name: "איתי לוי",
+            role: "buyer",
+            lead_temperature: "warm",
+            interactions: [{ summary: "אהבו את הסלון" }]
+          }
+        },
+        {
+          type: "create_or_update_property",
+          data: { address: "הירדן 12" }
+        },
+        { type: "create_task", data: { title: "לחזור לגבי המחיר", client_name: "איתי לוי" } }
+      ],
+      [execution, { actionType: "create_or_update_property", success: true }, { actionType: "create_task", success: true }]
+    );
+
+    expect(text).toContain("סיכום ביקור:");
+    expect(text).toContain("רמת עניין: חמים");
+    expect(text).toContain("\n\n• יצרתי כרטיס נכס");
+    expect(text).toContain("\n\n• יצרתי משימה");
   });
 });

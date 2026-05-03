@@ -34,13 +34,11 @@ export interface DemoStoreInteraction {
 export interface DemoStoreClient {
   id: string;
   name: string;
-  phone?: string;
   kind: DemoClientKind;
   status: DemoClientStatus;
   leadSource?: string;
   leadTemperature?: "חם" | "חמים" | "קר" | "לא ידוע";
   preferences: DemoStorePreferences;
-  notes?: string;
   interactions?: DemoStoreInteraction[];
 }
 
@@ -241,7 +239,6 @@ export function recordPipelineClientUpsert(
     leadSource: data.lead_source,
     leadTemperature: leadTemperatureToDemo(data.lead_temperature),
     preferences,
-    notes: undefined,
     ...(mergedInteractions !== undefined ? { interactions: mergedInteractions } : {})
   });
 }

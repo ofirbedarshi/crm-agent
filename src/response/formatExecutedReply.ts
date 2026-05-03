@@ -119,6 +119,8 @@ function touchedSnapshotSummary(
   return bits;
 }
 
+const SUB = "  – ";
+
 function formatClientSentence(
   action: Extract<SupportedAction, { type: "create_or_update_client" }>,
   execution: ActionExecutionResult | undefined
@@ -143,30 +145,31 @@ function formatClientSentence(
       ? touchedSnapshotSummary(action.data.preferences, snapshotPrefs)
       : preferencesSnapshotSummary(snapshotPrefs);
 
-  const sentences: string[] = [verb];
+  const lines: string[] = [verb];
 
   if (action.data.interactions && action.data.interactions.length > 0) {
-    sentences.push(
-      `אינטרקציות (${action.data.interactions.length}): ${action.data.interactions
-        .map((i) => {
-          const tag = i.kind?.trim() ? `[${i.kind.trim()}] ` : "";
-          return `${tag}${i.summary}`;
-        })
-        .join(" · ")}`
-    );
+    const n = action.data.interactions.length;
+    const label = n === 1 ? "סיכום ביקור" : `סיכום ביקורים (${n})`;
+    const body = action.data.interactions
+      .map((i) => {
+        const tag = i.kind?.trim() ? `[${i.kind.trim()}] ` : "";
+        return `${tag}${i.summary}`.trim();
+      })
+      .join(" · ");
+    lines.push(`${SUB}${label}: ${body}`);
   }
 
   if (patchBits.length > 0 && operation === "updated") {
-    sentences.push(`עדכון הפעם: ${patchBits.join("; ")}`);
+    lines.push(`${SUB}עדכון הפעם: ${patchBits.join("; ")}`);
   }
 
   if (snapshotBits.length > 0) {
-    sentences.push(`כעת עבור ${name}: ${snapshotBits.join("; ")}`);
+    lines.push(`${SUB}פרטים בכרטיס: ${snapshotBits.join("; ")}`);
   }
 
   const leadParts: string[] = [];
   if (action.data.lead_source) {
-    leadParts.push(`מקור ליד: ${action.data.lead_source}`);
+    leadParts.push(`מקור: ${action.data.lead_source}`);
   }
   if (action.data.lead_temperature && action.data.lead_temperature !== "unknown") {
     const heat =
@@ -178,15 +181,15 @@ function formatClientSentence(
             ? "קר"
             : "";
     if (heat) {
-      leadParts.push(`חום ליד: ${heat}`);
+      leadParts.push(`רמת עניין: ${heat}`);
     }
   }
 
   if (leadParts.length > 0 && operation === "created") {
-    sentences.push(leadParts.join("; "));
+    lines.push(`${SUB}${leadParts.join(" · ")}`);
   }
 
-  return sentences.filter((line) => line.trim().length > 0).join(". ").trim();
+  return lines.filter((line) => line.trim().length > 0).join("\n").trim();
 }
 
 function formatTaskSentence(action: Extract<SupportedAction, { type: "create_task" }>): string {
@@ -200,39 +203,53 @@ function formatPropertySentence(action: Extract<SupportedAction, { type: "create
   const intro = owner
     ? `יצרתי כרטיס נכס עבור ${owner} בכתובת ${action.data.address}`
     : `יצרתי כרטיס נכס בכתובת ${action.data.address}`;
-  const parts: string[] = [intro];
+  const detailBits: string[] = [];
   if (action.data.city) {
-    parts.push(`(${action.data.city})`);
+    detailBits.push(action.data.city);
   }
   if (action.data.rooms !== undefined) {
-    parts.push(`${action.data.rooms} חדרים`);
+    detailBits.push(`${action.data.rooms} חדרים`);
   }
   if (action.data.features && action.data.features.length > 0) {
-    parts.push(`תכונות: ${joinWithVe(action.data.features)}`);
+    detailBits.push(`תכונות: ${joinWithVe(action.data.features)}`);
   }
   if (action.data.asking_price !== undefined) {
-    parts.push(`מחיר מבוקש כ-${action.data.asking_price.toLocaleString("he-IL")} ₪`);
+    detailBits.push(`מחיר מבוקש כ-${action.data.asking_price.toLocaleString("he-IL")} ₪`);
   }
   if (action.data.price_note) {
-    parts.push(`הערת מחיר: ${action.data.price_note}`);
+    detailBits.push(`הערת מחיר: ${action.data.price_note}`);
   }
   if (action.data.general_notes) {
-    parts.push(`הערות: ${action.data.general_notes}`);
+    detailBits.push(`הערות: ${action.data.general_notes}`);
   }
-  return parts.join(". ").trim();
+  if (detailBits.length === 0) {
+    return intro;
+  }
+  return `${intro}\n${SUB}${detailBits.join(" · ")}`;
+}
+
+function withActionBullet(block: string): string {
+  const parts = block.split("\n");
+  if (parts.length === 0) {
+    return block;
+  }
+  parts[0] = `• ${parts[0]}`;
+  return parts.join("\n");
 }
 
 export function formatExecutedReply(actions: SupportedAction[], results: ActionExecutionResult[]): string {
-  const lines = actions.map((action, index) => {
+  const blocks = actions.map((action, index) => {
     const execution = results[index];
+    let inner: string;
     if (action.type === "create_task") {
-      return formatTaskSentence(action);
+      inner = formatTaskSentence(action);
+    } else if (action.type === "create_or_update_property") {
+      inner = formatPropertySentence(action);
+    } else {
+      inner = formatClientSentence(action, execution);
     }
-    if (action.type === "create_or_update_property") {
-      return formatPropertySentence(action);
-    }
-    return formatClientSentence(action, execution);
+    return withActionBullet(inner);
   });
 
-  return lines.join("\n");
+  return blocks.join("\n\n");
 }

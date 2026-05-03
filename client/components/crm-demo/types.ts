@@ -31,13 +31,11 @@ export interface DemoClientInteraction {
 export interface DemoClient {
   id: string;
   name: string;
-  phone?: string;
   kind: ClientKind;
   status: ClientStatus;
   leadSource?: string;
   leadTemperature?: "חם" | "חמים" | "קר" | "לא ידוע";
   preferences: ClientPreferences;
-  notes?: string;
   interactions?: DemoClientInteraction[];
 }
 

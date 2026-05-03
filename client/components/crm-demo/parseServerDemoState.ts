@@ -119,8 +119,6 @@ function parseClient(value: unknown): DemoClient | null {
   if (!id || !name || !isClientKind(kind) || !isClientStatus(status)) {
     return null;
   }
-  const phone = asString(value.phone);
-  const notes = asString(value.notes);
   const leadSource = asString(value.leadSource);
   const leadTemperatureRaw = value.leadTemperature;
   const leadTemperature =
@@ -136,13 +134,11 @@ function parseClient(value: unknown): DemoClient | null {
   return {
     id,
     name,
-    ...(phone ? { phone } : {}),
     kind,
     status,
     ...(leadSource ? { leadSource } : {}),
     ...(leadTemperature ? { leadTemperature } : {}),
     preferences: parsePreferences(value.preferences),
-    ...(notes ? { notes } : {}),
     ...(interactions.length > 0 ? { interactions } : {})
   };
 }

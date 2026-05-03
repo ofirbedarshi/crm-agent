@@ -170,10 +170,6 @@ function ClientDetailPanel({
             <h3 className="crm-detail-heading">פרטי לקוח</h3>
             <dl className="crm-detail-dl">
               <div>
-                <dt>טלפון</dt>
-                <dd>{client.phone ?? "—"}</dd>
-              </div>
-              <div>
                 <dt>סוג</dt>
                 <dd>
                   <span className="crm-badge crm-badge-muted">{client.kind}</span>
@@ -196,10 +192,6 @@ function ClientDetailPanel({
               <div className="crm-detail-dl-full">
                 <dt>העדפות</dt>
                 <dd>{formatPreferences(client.preferences)}</dd>
-              </div>
-              <div className="crm-detail-dl-full">
-                <dt>הערות</dt>
-                <dd>{client.notes ?? "—"}</dd>
               </div>
             </dl>
           </section>
@@ -406,19 +398,17 @@ export default function CrmDashboard() {
               <thead>
                 <tr>
                   <th scope="col">שם</th>
-                  <th scope="col">טלפון</th>
                   <th scope="col">סוג</th>
                   <th scope="col">סטטוס</th>
                   <th scope="col">מקור ליד</th>
                   <th scope="col">בשלות ליד</th>
                   <th scope="col">העדפות</th>
-                  <th scope="col">הערות</th>
                 </tr>
               </thead>
               <tbody>
                 {clients.length === 0 ? (
                   <tr>
-                    <td colSpan={8}>
+                    <td colSpan={6}>
                       <EmptyHint />
                     </td>
                   </tr>
@@ -430,7 +420,6 @@ export default function CrmDashboard() {
                       onClick={() => setDetailClientId(c.id)}
                     >
                       <td>{c.name}</td>
-                      <td>{c.phone ?? "—"}</td>
                       <td>
                         <span className="crm-badge crm-badge-muted">{c.kind}</span>
                       </td>
@@ -440,7 +429,6 @@ export default function CrmDashboard() {
                       <td>{c.leadSource ?? "—"}</td>
                       <td>{c.leadTemperature ?? "—"}</td>
                       <td className="crm-table-prefs">{formatPreferences(c.preferences)}</td>
-                      <td>{c.notes ?? "—"}</td>
                     </tr>
                   ))
                 )}
