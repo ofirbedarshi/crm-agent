@@ -22,13 +22,10 @@ interface ChatRequestBody {
 }
 
 /**
- * HTTP app used by the local dev server and Vercel serverless. All JSON routes
- * live under `/api` so the same paths work on Vercel (`/api/[...slug]`).
+ * HTTP app for the Express server (local + Railway). JSON routes live under `/api`.
  */
 export function createApp(): Express {
-  if (!process.env.VERCEL) {
-    loadDotenv();
-  }
+  loadDotenv();
 
   const app = express();
   app.use(cors());
@@ -40,7 +37,6 @@ export function createApp(): Express {
     res.status(200).json({ ok: true });
   });
 
-  /** Single path segment so Vercel serverless routing matches `/api/:name`. */
   api.get("/crm-demo-state", (_req, res) => {
     res.status(200).json(getDemoCrmState());
   });
@@ -120,7 +116,8 @@ export function createApp(): Express {
     const filePath = req.file.path;
 
     try {
-      const { cleaned_text } = await transcribeAndCleanupAudioFile(filePath);
+      const voiceMeta = await transcribeAndCleanupAudioFile(filePath);
+      const { cleaned_text, transcriptionModel, cleanupModel, transcriptionMs, cleanupMs } = voiceMeta;
 
       const userMessage = cleaned_text.trim();
       if (!userMessage) {
@@ -129,12 +126,39 @@ export function createApp(): Express {
 
       const result = await processDemoChatTurn(userMessage);
       const reply = result.response;
+      const crmPipelineMs = result.trace.timing.totalMs ?? 0;
+      const voicePipelineMs = transcriptionMs + cleanupMs;
       const trace: CrmPipelineTrace = {
         ...result.trace,
+        voice: {
+          transcriptionModel,
+          cleanupModel,
+          transcriptionMs,
+          cleanupMs,
+        },
+        timing: {
+          ...result.trace.timing,
+          voiceTranscribeMs: transcriptionMs,
+          voiceCleanupMs: cleanupMs,
+          totalMs: voicePipelineMs + crmPipelineMs,
+        },
         response: result.trace.response
           ? { ...result.trace.response, formattedReply: reply }
           : undefined,
       };
+
+      console.info(
+        `[voice-pipeline] ${JSON.stringify({
+          event: "voice_chat_turn_complete",
+          transcriptionModel,
+          cleanupModel,
+          transcriptionMs,
+          cleanupMs,
+          voicePipelineMs,
+          crmPipelineMs,
+          totalMs: trace.timing.totalMs,
+        })}`
+      );
 
       return res.json({ reply, trace, segmentId: getInternalChatSegmentId(), userMessage });
     } catch (error) {

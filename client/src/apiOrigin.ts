@@ -1,4 +1,4 @@
-/** API origin without trailing slash. Empty string = same origin (production on Vercel). */
+/** API origin without trailing slash. Empty string = same origin (typical single Railway service). */
 export function getApiOrigin(): string {
   const fromEnv = import.meta.env.VITE_API_URL;
   if (typeof fromEnv === "string" && fromEnv.trim() !== "") {

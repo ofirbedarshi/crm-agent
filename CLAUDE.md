@@ -38,7 +38,14 @@ Default process:
 - If something is risky, stop and ask.
 - Do not assume missing requirements.
 
-## 6. CRM pipeline — mandatory resolution order
+## 6. Deployment (Railway)
+
+- Production target is **Railway** only; Vercel artifacts are not used.
+- **Ship code:** Usually `git push` to the branch Railway watches (see `railway.toml` + `docs/deploying.md`).
+- **CLI deploy from disk:** `npm run deploy:railway` (requires Railway CLI + `railway link`).
+- Details, env vars, and health check: **`docs/deploying.md`**.
+
+## 7. CRM pipeline — mandatory resolution order
 
 Backend handling of a single user turn MUST follow this sequence (see `runCrmAgent` + `resolveAndEnrichCrmActions`):
 

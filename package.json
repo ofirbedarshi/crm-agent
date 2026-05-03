@@ -15,6 +15,7 @@
     "eval:user-stories": "tsx src/userStories/runUserStoriesLive.ts",
     "demo": "tsx src/cli/demo.ts",
     "build": "npm install --prefix client --include=dev && npm run build --prefix client",
+    "deploy:railway": "railway up",
     "start": "tsx server/server.ts",
     "server:dev": "tsx watch server/server.ts",
     "client:dev": "npm run dev --prefix client"

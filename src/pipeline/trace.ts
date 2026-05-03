@@ -2,6 +2,14 @@ import type { ActionExecutionResult } from "../orchestrator/executeActions";
 import type { ParseMessagePipelineResult } from "../parser/parseMessage";
 import type { SupportedAction } from "../types/parser";
 
+/** Voice turn: Whisper transcription + LLM cleanup before the CRM pipeline runs. */
+export interface TraceVoiceStage {
+  transcriptionModel: string;
+  cleanupModel: string;
+  transcriptionMs: number;
+  cleanupMs: number;
+}
+
 export interface TraceInputStage {
   rawMessage: string;
   pipelineInput: string;
@@ -31,6 +39,8 @@ export interface TraceResponseStage {
 
 export interface CrmPipelineTrace {
   input: TraceInputStage;
+  /** Present when the user message originated from `/api/voice-chat` (audio → text). */
+  voice?: TraceVoiceStage;
   llm?: TraceLlmStage;
   parser?: ParseMessagePipelineResult;
   validation?: TraceValidationStage;
@@ -39,6 +49,10 @@ export interface CrmPipelineTrace {
   };
   response?: TraceResponseStage;
   timing: {
+    /** Whisper (or configured) speech-to-text API latency */
+    voiceTranscribeMs?: number;
+    /** LLM JSON cleanup / correction latency (OPENAI_CLEANUP_MODEL) */
+    voiceCleanupMs?: number;
     parseMs?: number;
     validateMs?: number;
     resolveMs?: number;

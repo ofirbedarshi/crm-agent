@@ -76,6 +76,15 @@ For a full architecture + business-logic walkthrough, see:
 - [System Architecture and Flow](docs/system-architecture-and-flow.md)
 - [Product/MVP Spec](docs/crm-agent-spec.md)
 
+## Deployment
+
+Production is deployed on **Railway** (see `railway.toml`). There is no Vercel configuration in this repository.
+
+- **Agent quick path:** If GitHub is connected to Railway, push to `main` (or the configured branch) and confirm the deploy in the Railway dashboard.
+- **CLI:** From the repo root, `npm run deploy:railway` runs `railway up` (requires [Railway CLI](https://docs.railway.com/develop/cli) and a one-time `railway link`).
+
+Full checklist, env vars, and same-origin notes: **[docs/deploying.md](docs/deploying.md)**.
+
 ## Strengths Today
 
 - Clear, layered pipeline with strict contracts.

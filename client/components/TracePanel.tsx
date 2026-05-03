@@ -52,6 +52,7 @@ function formatMoneyHe(n: number): string {
 function translatePipelineStage(stage: string): string {
   const map: Record<string, string> = {
     chat_route: "טיפול בבקשת הצ׳אט",
+    voice_chat_route: "בקשת צ׳אט קולי",
     parse: "פרשנות ההודעה",
     validate: "אימות הפעולות",
     execute: "ביצוע ב-CRM",
@@ -221,16 +222,28 @@ function collectTimingLines(timing: Record<string, unknown> | null): string[] {
     return [];
   }
   const parts: string[] = [];
+  const voiceTranscribeMs = asNumber(timing.voiceTranscribeMs);
+  const voiceCleanupMs = asNumber(timing.voiceCleanupMs);
   const parseMs = asNumber(timing.parseMs);
   const validateMs = asNumber(timing.validateMs);
+  const resolveMs = asNumber(timing.resolveMs);
   const executeMs = asNumber(timing.executeMs);
   const responseMs = asNumber(timing.responseMs);
   const totalMs = asNumber(timing.totalMs);
+  if (voiceTranscribeMs !== undefined) {
+    parts.push(`תמלול קולי ${voiceTranscribeMs} ms`);
+  }
+  if (voiceCleanupMs !== undefined) {
+    parts.push(`תיקון תמליל (מודל) ${voiceCleanupMs} ms`);
+  }
   if (parseMs !== undefined) {
     parts.push(`פרשנות ${parseMs} ms`);
   }
   if (validateMs !== undefined) {
     parts.push(`אימות ${validateMs} ms`);
+  }
+  if (resolveMs !== undefined) {
+    parts.push(`זיהוי ישויות ${resolveMs} ms`);
   }
   if (executeMs !== undefined) {
     parts.push(`CRM ${executeMs} ms`);
@@ -298,6 +311,7 @@ function buildHebrewFlow(trace: Record<string, unknown>): {
   timingFooter: string[];
 } {
   const input = asRecord(trace.input);
+  const voice = asRecord(trace.voice);
   const llm = asRecord(trace.llm);
   const parser = asRecord(trace.parser);
   const validation = asRecord(trace.validation);
@@ -336,16 +350,47 @@ function buildHebrewFlow(trace: Record<string, unknown>): {
 
   const stages: FlowStage[] = [];
 
+  const voiceModel = asString(voice?.transcriptionModel);
+  const voiceCleanupModel = asString(voice?.cleanupModel);
+  const voiceTranscriptionMs = asNumber(voice?.transcriptionMs);
+  const voiceCleanupMs = asNumber(voice?.cleanupMs);
+  const hasVoiceMeta =
+    Boolean(voice) && voiceModel !== undefined && voiceCleanupModel !== undefined;
+
+  if (hasVoiceMeta) {
+    const tMs = voiceTranscriptionMs ?? 0;
+    const cMs = voiceCleanupMs ?? 0;
+    stages.push({
+      key: "voice",
+      title: "הקלטה קולית, תמלול ותיקון",
+      status: "success",
+      lines: [
+        "מקור הקלט: הודעה קולית (הקלטה; לא טקסט שהוקלד ישירות).",
+        `תמלול (דיבור לטקסט): מודל ${voiceModel} · זמן ${tMs} ms (לטנטיות עד תוצאת ה-API).`,
+        `תיקון וניקוי טקסט (מודל שפה): ${voiceCleanupModel} · זמן ${cMs} ms (לטנטיות עד סיום התיקון).`,
+        `סה״כ לפני מסלול ה-CRM: כ-${tMs + cMs} ms לתמלול + תיקון.`
+      ]
+    });
+  }
+
+  const inputLines: string[] = [];
+  if (hasVoiceMeta) {
+    inputLines.push("הטקסט למטה הוא מה שנכנס למסלול ה-CRM אחרי תמלול ותיקון של ההקלטה.");
+  }
+  inputLines.push(
+    rawMessage ? `הודעה שנשלחה לעיבוד: «${truncate(rawMessage, 480)}»` : "לא התקבלה הודעת משתמש ברורה."
+  );
+  inputLines.push(
+    historyCount > 0
+      ? `נשמר הקשר מהשיחה: ${historyCount} הודעות קודמות במטמון הבקשה.`
+      : "זו הודעה ראשונה בהקשר הנוכחי (אין היסטוריה שנדחפה לשרת בשלב זה)."
+  );
+
   stages.push({
     key: "input",
     title: "קלט מהמשתמש",
     status: rawMessage ? "success" : "warning",
-    lines: [
-      rawMessage ? `הודעה שנשלחה לעיבוד: «${truncate(rawMessage, 480)}»` : "לא התקבלה הודעת משתמש ברורה.",
-      historyCount > 0
-        ? `נשמר הקשר מהשיחה: ${historyCount} הודעות קודמות במטמון הבקשה.`
-        : "זו הודעה ראשונה בהקשר הנוכחי (אין היסטוריה שנדחפה לשרת בשלב זה)."
-    ]
+    lines: inputLines
   });
 
   const llmLines: string[] = [];
