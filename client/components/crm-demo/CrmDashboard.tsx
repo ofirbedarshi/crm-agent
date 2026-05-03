@@ -358,7 +358,6 @@ export default function CrmDashboard() {
         <div className="crm-header-title">
           <h1 className="crm-title">הדגמת CRM</h1>
           <p className="crm-subtitle">
-            נתונים בזיכרון השרת — מתעדכנים מהצ׳אט כשמבוצעות פעולות, ונדגם כאן כל כמה שניות
             {pollError ? (
               <span className="crm-poll-error"> · לא ניתן להתחבר לשרת — בדקו ש־השרת רץ</span>
             ) : null}
