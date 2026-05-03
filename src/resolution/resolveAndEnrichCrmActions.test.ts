@@ -55,6 +55,34 @@ describe("resolveAndEnrichCrmActions", () => {
     });
   });
 
+  it("disambiguates single-word task client_name when structured title embeds one full candidate name", () => {
+    const aviClients: FakeClient[] = [
+      { id: "1", name: "אבי כהן", role: "buyer" },
+      { id: "2", name: "אבי לוי", role: "buyer" }
+    ];
+    const result = resolveAndEnrichCrmActions(
+      [
+        {
+          type: "create_task",
+          data: {
+            title: "תזכירי מחר לדבר עם אבי לוי על האופציות שקבענו",
+            client_name: "אבי",
+            due_time: "מחר"
+          }
+        }
+      ],
+      aviClients
+    );
+
+    expect(result.validActions).toHaveLength(1);
+    expect(result.clarifications).toHaveLength(0);
+    expect(result.rejectedActions).toHaveLength(0);
+    expect(result.validActions[0]).toMatchObject({
+      type: "create_task",
+      data: { client_name: "אבי לוי", due_time: "מחר" }
+    });
+  });
+
   it("drops ambiguous tasks and asks which client was meant", () => {
     const result = resolveAndEnrichCrmActions(
       [

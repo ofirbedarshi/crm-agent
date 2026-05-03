@@ -258,6 +258,61 @@ describe("runCrmAgent", () => {
     expect(result.trace.response?.replyType).toBe("clarification");
   });
 
+  it("multi-word client_name not in CRM but sharing first name with existing client → creates new client + task without clarification", async () => {
+    // Seed CRM with one Avi already (mirrors the screenshot: turn 1 created אבי לוי).
+    executeActions([
+      { type: "create_or_update_client", data: { name: "אבי לוי", role: "buyer" } }
+    ]);
+
+    // Turn 2: user says full name "אבי כהן" — different last name, NOT in CRM.
+    // The parser is expected to emit a normal create_task; the pipeline must auto-create
+    // the missing client card and a task, with NO disambiguation question.
+    parseMessageMock.mockResolvedValue({
+      actions: [
+        {
+          type: "create_task",
+          data: {
+            title: "לדבר עם אבי כהן בנוגע לאופציה שדיברנו עליה",
+            client_name: "אבי כהן",
+            due_time: "מחר"
+          }
+        }
+      ],
+      missing_info: [],
+      clarification_questions: []
+    });
+
+    const result = await runCrmAgent({
+      rawMessage: "תזכיר לי מחר לדבר עם אבי כהן בנוגע לאופציה שדיברנו עליה.",
+      pipelineInput: "תזכיר לי מחר לדבר עם אבי כהן בנוגע לאופציה שדיברנו עליה.",
+      historyCount: 0
+    });
+
+    const state = getFakeCrmState();
+    const clientNames = state.clients.map((c) => c.name).sort();
+
+    // Both clients exist after turn 2.
+    expect(clientNames).toEqual(["אבי כהן", "אבי לוי"]);
+
+    // Exactly one task created, tied to אבי כהן.
+    expect(state.tasks).toHaveLength(1);
+    expect(state.tasks[0]?.client_name).toBe("אבי כהן");
+    expect(state.tasks[0]?.due_time).toBe("מחר");
+
+    // No clarification surfaced; reply describes the executed actions.
+    expect(result.trace.validation?.clarificationQuestions ?? []).toEqual([]);
+    expect(result.trace.response?.replyType).toBe("actions");
+    expect(result.response).not.toMatch(/על איזה אבי מדובר/);
+    expect(result.response).toContain("יצרתי כרטיס לקוח");
+    expect(result.response).toContain("יצרתי משימה");
+    expect(result.response).toContain("אבי כהן");
+
+    // Demo CRM mirror reflects both the new client card and the calendar entry.
+    const demo = getDemoCrmState();
+    expect(demo.clients.map((c) => c.name).sort()).toEqual(["אבי כהן", "אבי לוי"]);
+    expect(demo.calendar.some((e) => e.clientName === "אבי כהן")).toBe(true);
+  });
+
   it("unsupported fields are removed during validation", async () => {
     executeActions([
       { type: "create_or_update_client", data: { name: "דניאל לוי", role: "buyer" } }

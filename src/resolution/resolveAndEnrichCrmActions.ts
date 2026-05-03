@@ -69,6 +69,25 @@ function clarificationClientNotFound(name: string, isSingleWord: boolean): strin
   return `לא קיים לקוח בשם ${name} במערכת — בדוק שהשם מדויק כפי שמופיע בכרטיס הלקוח.`;
 }
 
+/** When `client_name` is one token but matches several CRM rows, use structured `title` only. */
+function disambiguateAmbiguousTaskByTitle(candidates: FakeClient[], taskTitle: string): FakeClient | undefined {
+  const titleNorm = normalizeWhitespace(taskTitle);
+  if (!titleNorm) {
+    return undefined;
+  }
+  const hits: FakeClient[] = [];
+  for (const c of candidates) {
+    const nameNorm = normalizeWhitespace(c.name);
+    if (nameNorm.length === 0) {
+      continue;
+    }
+    if (titleNorm.includes(nameNorm)) {
+      hits.push(c);
+    }
+  }
+  return hits.length === 1 ? hits[0] : undefined;
+}
+
 export function resolveAndEnrichCrmActions(
   actions: SupportedAction[],
   /** Persisted CRM clients only (SSOT), before applying this batch. */
@@ -108,6 +127,14 @@ export function resolveAndEnrichCrmActions(
       }
 
       if ("ambiguous" in resolved) {
+        const byTitle = disambiguateAmbiguousTaskByTitle(resolved.ambiguous, action.data.title ?? "");
+        if (byTitle) {
+          out.push({
+            ...action,
+            data: { ...action.data, client_name: byTitle.name }
+          });
+          continue;
+        }
         clarifications.push(
           clarificationAmbiguousRef(normalizeWhitespace(rawClient), resolved.ambiguous)
         );
@@ -260,6 +287,10 @@ export function resolveAndEnrichCrmActions(
     out,
     persistedProperties
   );
+
+  // #region agent log
+  fetch('http://127.0.0.1:7331/ingest/d80a704b-80c9-44d9-96c4-eb6383a36c73',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'025882'},body:JSON.stringify({sessionId:'025882',location:'resolveAndEnrichCrmActions.ts:end',message:'resolution complete',data:{inputCount:actions.length,outputCount:afterPropertyLinkage.length,clientActions:afterPropertyLinkage.filter(a=>a.type==='create_or_update_client').map(a=>({name:(a as {data:{name:string}}).data.name})),rejectedCount:rejectedActions.length,rejected:rejectedActions},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
 
   return {
     validActions: afterPropertyLinkage,

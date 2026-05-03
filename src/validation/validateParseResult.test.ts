@@ -113,6 +113,30 @@ describe("validateParseResult", () => {
     expect(result.clarification_questions.some((q) => q.includes("שעה מדויקת לא חובה"))).toBe(true);
   });
 
+  it("when a reminder task lacks due_time but names a full client, still emits a bare client upsert", () => {
+    const result = validateParseResult({
+      actions: [
+        {
+          type: "create_task",
+          data: {
+            title: "תזכירי לדבר עם אבי לוי על האופציות שקבענו",
+            client_name: "אבי לוי"
+          }
+        }
+      ],
+      missing_info: [],
+      clarification_questions: []
+    });
+
+    expect(result.validActions).toEqual([
+      { type: "create_or_update_client", data: { name: "אבי לוי" } }
+    ]);
+    expect(result.rejectedActions).toContainEqual({
+      actionType: "create_task",
+      reason: "due_time required for scheduled tasks"
+    });
+  });
+
   it("rejects tasks without client_name", () => {
     const result = validateParseResult({
       actions: [

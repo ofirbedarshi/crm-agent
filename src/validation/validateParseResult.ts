@@ -279,6 +279,19 @@ export function validateParseResult(result: ParseMessageResult): ValidationResul
           reason: "task client_name is required"
         });
       } else if (!normalized.data.due_time && taskLikelyNeedsDueWindow(normalized.data.title)) {
+        /** When the model emits only `create_task` with a full `client_name` but no `due_time`, we
+         * still want a client row in CRM/demo UI; otherwise the user sees one client while the
+         * assistant asks follow-ups (parser may emit empty actions in the next turn). */
+        const fullClientName = normalized.data.client_name?.trim();
+        const nameTokens = fullClientName ? fullClientName.split(/\s+/).filter(Boolean) : [];
+        if (nameTokens.length >= 2) {
+          const alreadyHave = validActions.some(
+            (a) => a.type === "create_or_update_client" && a.data.name.trim() === fullClientName
+          );
+          if (!alreadyHave) {
+            validActions.push({ type: "create_or_update_client", data: { name: fullClientName } });
+          }
+        }
         missingInfo.add("due_time");
         clarifications.add(
           "מתי תרצה לבצע את המשימה או לקבל תזכורת? מספיק יום או משבצת כללית (בוקר/ערב); שעה מדויקת לא חובה."

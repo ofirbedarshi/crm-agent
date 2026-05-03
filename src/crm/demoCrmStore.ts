@@ -184,6 +184,9 @@ function normalizeDemoPreferences(p?: ParserPreferences): DemoStorePreferences {
 }
 
 export function getDemoCrmState(): DemoCrmSnapshot {
+  // #region agent log
+  fetch('http://127.0.0.1:7331/ingest/d80a704b-80c9-44d9-96c4-eb6383a36c73',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'025882'},body:JSON.stringify({sessionId:'025882',location:'demoCrmStore.ts:getDemoCrmState',message:'state snapshot requested',data:{clientCount:clients.length,clientNames:clients.map(c=>c.name)},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   return {
     clients: clients.map((c) => ({
       ...c,
@@ -211,6 +214,9 @@ export function recordPipelineClientUpsert(
   _operation: "created" | "updated"
 ): void {
   const idx = clients.findIndex((c) => c.name === data.name);
+  // #region agent log
+  fetch('http://127.0.0.1:7331/ingest/d80a704b-80c9-44d9-96c4-eb6383a36c73',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'025882'},body:JSON.stringify({sessionId:'025882',location:'demoCrmStore.ts:recordPipelineClientUpsert',message:'upsert called',data:{name:data.name,entityId,idx,clientsBefore:clients.map(c=>({id:c.id,name:c.name}))},timestamp:Date.now(),hypothesisId:'A-D'})}).catch(()=>{});
+  // #endregion
   const kind = roleToKind(data.role);
   const preferences = normalizeDemoPreferences(data.preferences);
 

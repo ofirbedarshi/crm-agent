@@ -144,6 +144,10 @@ CLIENT NAME EXTRACTION (critical — overrides CRM snapshot name preferences):
   - CORRECT: "דיברתי עם יוסי כהן" → "יוסי כהן"
   - WRONG: "דיברתי עם יוסי כהן" → "יוסי" ❌
   - WRONG: "דיברתי עם יוסי לוי" → "יוסי כהן" ❌ (even if CRM has "יוסי כהן"; the user said לוי, not כהן)
+- A full-name mention (two or more words) is NEVER ambiguous, even if the CRM snapshot already contains another person who shares only the first name. In that case the user is talking about a NEW or different person — emit the normal actions (create_or_update_client plus any implied create_task / create_or_update_property) using that exact full name. NEVER emit a "על איזה X מדובר" clarification when the user already wrote a full name; ambiguity questions apply ONLY to one-word references.
+  - CORRECT: CRM has "יוסי כהן"; user says "תעדכן את יוסי לוי שצריך לחזור אליו מחר" → emit create_or_update_client for "יוסי לוי" + create_task(client_name="יוסי לוי", due_time="מחר"). Do NOT ask which יוסי.
+  - CORRECT: CRM has "אבי לוי"; user says "תזכיר לי מחר לדבר עם אבי כהן" → emit create_or_update_client for "אבי כהן" + create_task(client_name="אבי כהן", due_time="מחר"). Do NOT ask which אבי.
+  - WRONG: CRM has "יוסי כהן"; user says "יוסי לוי …" → "actions": [], clarification "על איזה יוסי מדובר — יוסי כהן או יוסי לוי?" ❌ (the user already named יוסי לוי explicitly).
 - If the user gives only a first name (one word), output ONLY that first name. Do NOT append a last name from the CRM snapshot.
   - CORRECT: "תעדכן את יוסי" → "יוסי"
   - WRONG: "תעדכן את יוסי" → "יוסי כהן" ❌ (even if CRM snapshot shows "יוסי כהן")
@@ -151,7 +155,10 @@ CLIENT NAME EXTRACTION (critical — overrides CRM snapshot name preferences):
 
 Indirect references rule (critical):
 - If the person is referenced indirectly (for example pronouns or generic references like "הלקוחה", "הוא", "איתו", "משפחה"), do NOT guess identity. Ask a clarification question asking for the full name.
-- If the user mentions only a first name (one word) AND two or more CRM clients share that first name: do NOT pick one, do NOT create the action. Instead, add a clarification question asking which client they meant and list both full names. Example: user says "יוסי", CRM has "יוסי כהן" and "יוסי לוי" → ask "על איזה יוסי מדובר — יוסי כהן או יוסי לוי?"
+- Explicit naming after a preposition is NOT indirect: patterns like "אצל אבי לוי", "עם מיכל כהן", "לדני לוי", "את יוסי כהן", "תעדכן אצל …", "עדכון אצל …" include a concrete person name. When that name is two or more words, you MUST emit actions (create_or_update_client + create_task when they schedule or commit to a visit/update) with name/client_name copied exactly from that name phrase — never ask "מה שם הלקוח?" for information already in the same sentence.
+- When the CRM snapshot shows zero clients and the user names someone with a full name, treat them as a new client card plus any tasks/interactions implied by the message — still output exact names from the user text only.
+- If the user names someone with a FULL name (two or more words) and that exact full name is NOT in the CRM snapshot, treat them as a NEW person and emit the normal actions (create_or_update_client plus any implied create_task / create_or_update_property) using that exact name. This holds EVEN WHEN the snapshot already contains a different person who shares only the first name. Do NOT ask "על איזה X מדובר" and do NOT list the other CRM person as a candidate — a full-name mention is unambiguous by itself. Example: CRM contains only "אבי לוי", user says "תזכיר לי מחר לדבר עם אבי כהן" → emit create_or_update_client for "אבי כהן" + create_task with client_name "אבי כהן" and due_time "מחר"; do NOT ask which אבי.
+- If — and ONLY if — the user mentions just a first name (exactly one word, with no last name) AND two or more CRM clients share that first name: do NOT pick one, do NOT create the action. Instead, add a clarification question asking which client they meant and list both full names. Example: user says only "יוסי" (no last name), CRM has "יוסי כהן" and "יוסי לוי" → ask "על איזה יוסי מדובר — יוסי כהן או יוסי לוי?". This rule NEVER applies when the user already wrote a full name (two or more words) — see CLIENT NAME EXTRACTION above.
 
 Time extraction rule:
 - If time is mentioned (for example "מחר", "עוד שבוע"), put it in due_time only when the task is otherwise valid (has clear title and explicit client_name).

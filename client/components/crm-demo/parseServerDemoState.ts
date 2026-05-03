@@ -210,9 +210,13 @@ export function parseServerDemoPayload(raw: unknown): CrmDemoState {
   if (!isRecord(raw)) {
     return emptyCrmDemoState();
   }
+  const rawClientCount = Array.isArray(raw.clients) ? raw.clients.length : 0;
   const clients = Array.isArray(raw.clients)
     ? raw.clients.map(parseClient).filter((c): c is DemoClient => c !== null)
     : [];
+  // #region agent log
+  fetch('http://127.0.0.1:7331/ingest/d80a704b-80c9-44d9-96c4-eb6383a36c73',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'025882'},body:JSON.stringify({sessionId:'025882',location:'parseServerDemoState.ts:parseServerDemoPayload',message:'parsed clients',data:{rawCount:rawClientCount,parsedCount:clients.length,rawClients:Array.isArray(raw.clients)?raw.clients.map((c:unknown)=>{if(typeof c==='object'&&c!==null){const o=c as Record<string,unknown>;return{id:o['id'],name:o['name'],kind:o['kind'],status:o['status']};}return c;}):[]},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
   const properties = Array.isArray(raw.properties)
     ? raw.properties.map(parseProperty).filter((p): p is DemoProperty => p !== null)
     : [];
