@@ -32,8 +32,7 @@ export async function transcribeAndCleanupAudioFile(filePath: string): Promise<T
   const raw_text = typeof transcription === "string" ? transcription : (transcription.text ?? "");
 
   const completion = await openai.chat.completions.create({
-    model: process.env.OPENAI_CLEANUP_MODEL ?? "gpt-4o",
-    temperature: 0.2,
+    model: process.env.OPENAI_CLEANUP_MODEL ?? "gpt-5",
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: CLEANUP_SYSTEM },
