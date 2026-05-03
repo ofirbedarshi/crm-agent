@@ -320,11 +320,13 @@ body.app-pane-dragging {
   flex-direction: row;
   align-items: stretch;
   box-sizing: border-box;
-  min-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   width: 100%;
   padding: 8px;
   gap: 0;
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .app-pane {
@@ -383,7 +385,10 @@ body.app-pane-dragging {
 .app-triple-split--narrow {
   flex-direction: column;
   overflow-x: hidden;
+  overflow-y: auto;
+  height: auto;
   min-height: 100dvh;
+  max-height: none;
   gap: 0;
 }
 
