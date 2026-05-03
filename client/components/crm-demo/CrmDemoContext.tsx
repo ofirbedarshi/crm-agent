@@ -7,10 +7,9 @@ import {
   useState,
   type ReactNode
 } from "react";
+import { apiUrl } from "../../src/apiOrigin";
 import { emptyCrmDemoState, parseServerDemoPayload } from "./parseServerDemoState";
 import type { CrmDemoState } from "./types";
-
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
 
 const POLL_MS = 2000;
 
@@ -26,9 +25,9 @@ export function CrmDemoProvider({ children }: { children: ReactNode }) {
   const [pollError, setPollError] = useState(false);
 
   const pullState = useCallback(async () => {
-    const response = await fetch(`${API_URL}/crm-demo/state`);
+    const response = await fetch(apiUrl("/api/crm-demo-state"));
     if (!response.ok) {
-      throw new Error(`crm-demo/state ${response.status}`);
+      throw new Error(`crm-demo-state ${response.status}`);
     }
     const raw: unknown = await response.json();
     setState(parseServerDemoPayload(raw));
@@ -59,9 +58,9 @@ export function CrmDemoProvider({ children }: { children: ReactNode }) {
   }, [pullState]);
 
   const resetDemoData = useCallback(async () => {
-    const response = await fetch(`${API_URL}/crm-demo/reset`, { method: "POST" });
+    const response = await fetch(apiUrl("/api/crm-demo-reset"), { method: "POST" });
     if (!response.ok) {
-      throw new Error(`crm-demo/reset ${response.status}`);
+      throw new Error(`crm-demo-reset ${response.status}`);
     }
     const raw: unknown = await response.json();
     if (isRecord(raw) && raw.state !== undefined) {

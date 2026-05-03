@@ -137,6 +137,39 @@ body {
   cursor: not-allowed;
 }
 
+.chat-mic-button {
+  border: none;
+  border-radius: 12px;
+  background: #f1f5f9;
+  color: #475569;
+  padding: 10px 12px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.chat-mic-button:hover:not(:disabled) {
+  background: #e2e8f0;
+}
+
+.chat-mic-button--recording {
+  background: #fee2e2;
+  color: #dc2626;
+  animation: mic-pulse 1s ease-in-out infinite;
+}
+
+.chat-mic-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@keyframes mic-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 .trace-panel {
   width: min(42vw, 560px);
   min-width: 0;
