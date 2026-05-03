@@ -74,7 +74,7 @@ export type Us002LiveExpectation = {
     askingPriceApprox: number;
     askingPriceTolerance: number;
     featuresCombinedPattern: RegExp;
-    /** Both patterns must match the combined property notes + seller preferences JSON blob. */
+    /** Both patterns match property notes + seller preferences JSON + client interaction summaries (parser SSOT for call/listing narrative). */
     storyNotesMustMatchBoth: readonly [RegExp, RegExp];
     ownerClientNameIncludes: string;
   };

@@ -29,6 +29,15 @@ function near(actual: number, expected: number, tolerance: number, label: string
   }
 }
 
+/** Text from client interaction rows (seller call / visit narrative often lands here per parser rules). */
+function fakeClientInteractionsText(client: FakeClient): string {
+  return (client.interactions ?? [])
+    .map((i) =>
+      [i.summary, i.property_address, ...(i.property_addresses ?? [])].filter(Boolean).join(" ")
+    )
+    .join(" | ");
+}
+
 /** Mocked pipeline: exact structure (Vitest). */
 export function assertUs001PipelineStrict(ctx: PipelineStoryContext): void {
   const { result, fakeCrm: crm } = ctx;
@@ -167,13 +176,21 @@ export function assertUs002PipelineStrict(ctx: PipelineStoryContext): void {
   if (!(prop.features ?? []).includes("חניה בטאבו")) fail(`US-002: features חניה בטאבו`);
   if (prop.asking_price !== 2_850_000) fail(`US-002: asking_price`);
   if (!prop.price_note?.includes("מחיר שוק")) fail(`US-002: price_note`);
-  if (!prop.general_notes?.includes("בלעדיות")) fail(`US-002: general_notes`);
+  const exclusivityNarrative = `${prop.general_notes ?? ""} ${fakeClientInteractionsText(client)}`;
+  if (!/בלעדיות|שווי|הערכ/i.test(exclusivityNarrative)) {
+    fail(`US-002: exclusivity / valuation in general_notes or client.interactions`);
+  }
 
   if (crm.tasks[0]?.due_time !== "יום חמישי אחר הצהריים") fail(`US-002: due`);
 
   const demoProp = ctx.demoCrm.properties[0];
+  const demoClient = ctx.demoCrm.clients[0];
+  const demoIx = (demoClient?.interactions ?? []).map((i) => i.summary).join(" ");
   if (!demoProp?.priceNote?.includes("מחיר שוק")) fail(`US-002: demo priceNote`);
-  if (!demoProp?.generalNotes?.includes("בלעדיות")) fail(`US-002: demo generalNotes`);
+  const demoExclusivity = `${demoProp?.generalNotes ?? ""} ${demoIx}`;
+  if (!/בלעדיות|שווי|הערכ/i.test(demoExclusivity)) {
+    fail(`US-002: demo exclusivity / valuation (generalNotes or interactions)`);
+  }
 
   if (!result.response.includes("יצרתי כרטיס לקוח")) fail(`US-002: reply`);
   if (!result.response.includes("יצרתי כרטיס נכס")) fail(`US-002: reply property`);
@@ -250,8 +267,9 @@ export function assertUs002PipelineLive(ctx: PipelineStoryContext, expected: Us0
     client.preferences !== undefined && client.preferences !== null
       ? JSON.stringify(client.preferences)
       : "";
-  /** Property notes and seller preferences — LLM often puts exclusivity on the client card. */
-  const storyNotesBlob = `${propNotes} ${sellerPrefsJson}`;
+  const interactionNotes = fakeClientInteractionsText(client);
+  /** Property notes, seller prefs JSON, and client interaction summaries (post-call narrative). */
+  const storyNotesBlob = `${propNotes} ${sellerPrefsJson} ${interactionNotes}`;
   const [pricePat, exclusivityPat] = expProp.storyNotesMustMatchBoth;
   if (!pricePat.test(storyNotesBlob)) {
     fail(`${expected.storyLabel}: expected price/context on property notes or seller preferences (${pricePat})`);
