@@ -7,7 +7,7 @@ import { applyHebrewPostCorrection } from "./hebrewCorrection";
 export const VOICE_TRANSCRIPTION_MODEL = "whisper-1" as const;
 
 export function getVoiceCleanupModel(): string {
-  return (process.env.OPENAI_CLEANUP_MODEL ?? "gpt-5").trim();
+  return (process.env.OPENAI_CLEANUP_MODEL ?? "gpt-4o").trim();
 }
 
 export interface TranscriptionResult {
@@ -47,6 +47,7 @@ export async function transcribeAndCleanupAudioFile(filePath: string): Promise<T
   const c0 = Date.now();
   const completion = await openai.chat.completions.create({
     model: cleanupModel,
+    temperature: 0.2,
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: CLEANUP_SYSTEM },

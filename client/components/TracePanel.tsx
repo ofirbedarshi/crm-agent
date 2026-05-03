@@ -30,6 +30,10 @@ function asNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function formatSec(ms: number): string {
+  return `${(ms / 1000).toFixed(2)} ש׳`;
+}
+
 function truncate(text: string, max: number): string {
   if (text.length <= max) {
     return text;
@@ -231,31 +235,31 @@ function collectTimingLines(timing: Record<string, unknown> | null): string[] {
   const responseMs = asNumber(timing.responseMs);
   const totalMs = asNumber(timing.totalMs);
   if (voiceTranscribeMs !== undefined) {
-    parts.push(`תמלול קולי ${voiceTranscribeMs} ms`);
+    parts.push(`תמלול קולי ${formatSec(voiceTranscribeMs)}`);
   }
   if (voiceCleanupMs !== undefined) {
-    parts.push(`תיקון תמליל (מודל) ${voiceCleanupMs} ms`);
+    parts.push(`תיקון תמליל (מודל) ${formatSec(voiceCleanupMs)}`);
   }
   if (parseMs !== undefined) {
-    parts.push(`פרשנות ${parseMs} ms`);
+    parts.push(`פרשנות ${formatSec(parseMs)}`);
   }
   if (validateMs !== undefined) {
-    parts.push(`אימות ${validateMs} ms`);
+    parts.push(`אימות ${formatSec(validateMs)}`);
   }
   if (resolveMs !== undefined) {
-    parts.push(`זיהוי ישויות ${resolveMs} ms`);
+    parts.push(`זיהוי ישויות ${formatSec(resolveMs)}`);
   }
   if (executeMs !== undefined) {
-    parts.push(`CRM ${executeMs} ms`);
+    parts.push(`CRM ${formatSec(executeMs)}`);
   }
   if (responseMs !== undefined) {
-    parts.push(`תגובה ${responseMs} ms`);
+    parts.push(`תגובה ${formatSec(responseMs)}`);
   }
   if (parts.length === 0) {
     return [];
   }
   const tail =
-    totalMs !== undefined ? ` · סה״כ כ-${Math.round(totalMs)} ms` : "";
+    totalMs !== undefined ? ` · סה״כ כ-${formatSec(totalMs)}` : "";
   return [`מהירות שלבים: ${parts.join(" · ")}${tail}`];
 }
 
@@ -366,9 +370,9 @@ function buildHebrewFlow(trace: Record<string, unknown>): {
       status: "success",
       lines: [
         "מקור הקלט: הודעה קולית (הקלטה; לא טקסט שהוקלד ישירות).",
-        `תמלול (דיבור לטקסט): מודל ${voiceModel} · זמן ${tMs} ms (לטנטיות עד תוצאת ה-API).`,
-        `תיקון וניקוי טקסט (מודל שפה): ${voiceCleanupModel} · זמן ${cMs} ms (לטנטיות עד סיום התיקון).`,
-        `סה״כ לפני מסלול ה-CRM: כ-${tMs + cMs} ms לתמלול + תיקון.`
+        `תמלול (דיבור לטקסט): מודל ${voiceModel} · זמן ${formatSec(tMs)} (לטנטיות עד תוצאת ה-API).`,
+        `תיקון וניקוי טקסט (מודל שפה): ${voiceCleanupModel} · זמן ${formatSec(cMs)} (לטנטיות עד סיום התיקון).`,
+        `סה״כ לפני מסלול ה-CRM: כ-${formatSec(tMs + cMs)} לתמלול + תיקון.`
       ]
     });
   }

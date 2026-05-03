@@ -50,7 +50,7 @@ describe("transcribeAndCleanupAudioFile", () => {
     const r = await transcribeAndCleanupAudioFile("/tmp/nonexistent-but-mocked.webm");
     expect(r.raw_text).toBe("שלום גולמי");
     expect(r.transcriptionModel).toBe(VOICE_TRANSCRIPTION_MODEL);
-    expect(r.cleanupModel).toBe("gpt-5");
+    expect(r.cleanupModel).toBe("gpt-4o");
     expect(Number.isFinite(r.transcriptionMs)).toBe(true);
     expect(Number.isFinite(r.cleanupMs)).toBe(true);
     expect(r.transcriptionMs).toBeGreaterThanOrEqual(0);
@@ -58,7 +58,7 @@ describe("transcribeAndCleanupAudioFile", () => {
     expect(transcriptionsCreate).toHaveBeenCalledWith(
       expect.objectContaining({ model: "whisper-1", language: "he" })
     );
-    expect(chatCompletionsCreate).toHaveBeenCalledWith(expect.objectContaining({ model: "gpt-5" }));
+    expect(chatCompletionsCreate).toHaveBeenCalledWith(expect.objectContaining({ model: "gpt-4o" }));
   });
 
   it("uses OPENAI_CLEANUP_MODEL for correction when set", async () => {
