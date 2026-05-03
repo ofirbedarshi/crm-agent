@@ -1,0 +1,12 @@
+# https://docs.railway.com/reference/config-as-code
+# Set OPENAI_API_KEY in the Railway service Variables tab (required for chat).
+
+[build]
+builder = "nixpacks"
+buildCommand = "npm run build"
+
+[deploy]
+startCommand = "npm start"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
