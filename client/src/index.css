@@ -379,6 +379,82 @@ body.app-pane-dragging {
   flex: 1;
 }
 
+/* Narrow viewport: tabbed chat / CRM / optional trace (see TripaneShell.tsx) */
+.app-triple-split--narrow {
+  flex-direction: column;
+  overflow-x: hidden;
+  min-height: 100dvh;
+  gap: 0;
+}
+
+.app-mobile-tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+  padding: 8px 8px 10px;
+  background: #e8ecf3;
+  border-radius: 14px;
+  margin-bottom: 8px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0));
+}
+
+.app-mobile-tab {
+  flex: 1 1 0;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #475569;
+  background: #f1f5f9;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.app-mobile-tab:hover {
+  background: #e2e8f0;
+}
+
+.app-mobile-tab:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+
+.app-mobile-tab--active {
+  color: #1e293b;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+.app-mobile-panel-host {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.app-triple-split--narrow .app-mobile-tabpanel {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* [hidden] alone loses to .app-pane { display: flex }; force one mode at a time */
+.app-triple-split--narrow .app-mobile-tabpanel[hidden] {
+  display: none !important;
+}
+
+.app-triple-split--narrow .app-pane-trace .trace-panel {
+  max-height: none;
+}
+
+.app-triple-split--narrow .crm-dashboard {
+  min-height: 0;
+}
+
 /* CRM demo dashboard */
 .crm-dashboard {
   display: flex;
